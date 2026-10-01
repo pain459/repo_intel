@@ -10,6 +10,7 @@ from repo_intel.diagnostics.services import (
 )
 from repo_intel.platform import PlatformKind
 from repo_intel.runtime import CommandRunner, JsonHttpClient
+from repo_intel.setup.guidance import installation_guidance
 from repo_intel.setup.hardware import inspect_hardware
 from repo_intel.setup.models import HardwareProfile
 from repo_intel.setup.recommendation import recommend_qwen
@@ -25,14 +26,14 @@ def run_doctor(
     """Inspect local dependencies without changing files or processes."""
     hardware = inspect_hardware(platform, runner) if hardware_profile is None else hardware_profile
     recommendation = recommend_qwen(hardware)
-    git = check_executable("git", runner, "Install Git and run doctor again.")
-    ripgrep = check_executable("rg", runner, "Install ripgrep and run doctor again.")
+    git = check_executable("git", runner, installation_guidance(platform, "git"))
+    ripgrep = check_executable("rg", runner, installation_guidance(platform, "rg"))
     ollama = check_ollama(
         runner,
         http,
-        guidance="Install Ollama and run doctor again.",
+        guidance=installation_guidance(platform, "ollama"),
     )
-    docker = check_docker(runner, guidance="Install Docker and run doctor again.")
+    docker = check_docker(runner, guidance=installation_guidance(platform, "docker"))
     qdrant = check_qdrant(
         http,
         guidance="Run repo-intel setup to review Qdrant startup.",

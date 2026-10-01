@@ -9,12 +9,12 @@ from repo_intel.cli.app import app
 runner = CliRunner()
 
 
-def test_help_lists_version_command() -> None:
+def test_help_lists_public_commands() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
     assert "Repository intelligence" in result.stdout
-    assert "version" in result.stdout
+    assert all(command in result.stdout for command in ("doctor", "setup", "version"))
 
 
 def test_version_command_prints_distribution_version() -> None:

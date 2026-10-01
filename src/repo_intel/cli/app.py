@@ -3,6 +3,8 @@
 import typer
 
 from repo_intel import __version__
+from repo_intel.cli.doctor import doctor_command
+from repo_intel.cli.setup import setup_command
 
 app = typer.Typer(
     help="Repository intelligence for local coding agents.",
@@ -19,6 +21,10 @@ def root() -> None:
 def version() -> None:
     """Print the installed repo_intel version."""
     typer.echo(__version__)
+
+
+app.command("doctor")(doctor_command)
+app.command("setup")(setup_command)
 
 
 def main() -> None:
