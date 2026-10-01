@@ -54,9 +54,10 @@ def valid_file() -> ScannedFile:
 
 def test_domain_records_are_immutable() -> None:
     repository = RepositoryRef(repository_id=REPOSITORY_ID, root=Path("/workspace/project"))
+    field_name = "root"
 
     with pytest.raises(FrozenInstanceError):
-        setattr(repository, "root", Path("/another/project"))
+        setattr(repository, field_name, Path("/another/project"))
 
 
 @pytest.mark.parametrize("root", [Path("project"), Path(".")])
