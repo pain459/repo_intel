@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 
 class AcceleratorKind(StrEnum):
@@ -30,4 +31,27 @@ class ModelRecommendation:
     uncertain: bool
 
 
-__all__ = ["AcceleratorKind", "HardwareProfile", "ModelRecommendation"]
+@dataclass(frozen=True, slots=True)
+class SetupPaths:
+    """Platform-native files and directories owned by setup."""
+
+    user_config: Path
+    compose_file: Path
+    qdrant_data_dir: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedSetup:
+    """Result of idempotently preparing local setup state."""
+
+    paths: SetupPaths
+    changed_paths: tuple[Path, ...]
+
+
+__all__ = [
+    "AcceleratorKind",
+    "HardwareProfile",
+    "ModelRecommendation",
+    "PreparedSetup",
+    "SetupPaths",
+]
