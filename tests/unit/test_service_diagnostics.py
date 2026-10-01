@@ -187,7 +187,7 @@ def test_other_docker_failures_are_unhealthy_without_leaking(result: CommandResu
 @pytest.mark.parametrize(
     ("response", "expected"),
     [
-        (JsonResponse(HttpState.OK, 200, "healthz check passed"), CheckState.HEALTHY),
+        (JsonResponse(HttpState.INVALID_JSON, 200, None), CheckState.HEALTHY),
         (JsonResponse(HttpState.UNREACHABLE, None, None), CheckState.STOPPED),
         (JsonResponse(HttpState.TIMEOUT, None, None), CheckState.STOPPED),
         (JsonResponse(HttpState.HTTP_ERROR, 503, None), CheckState.UNHEALTHY),

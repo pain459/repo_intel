@@ -161,7 +161,12 @@ def check_docker(runner: CommandRunner, *, guidance: str) -> DiagnosticCheck:
 def check_qdrant(http: JsonHttpClient, *, guidance: str) -> DiagnosticCheck:
     """Check the localhost Qdrant health endpoint."""
     response = http.get(QDRANT_HEALTH_URL, timeout_seconds=_HTTP_TIMEOUT_SECONDS)
-    if response.state is HttpState.OK:
+    plain_text_success = (
+        response.state is HttpState.INVALID_JSON
+        and response.status_code is not None
+        and 200 <= response.status_code < 300
+    )
+    if response.state is HttpState.OK or plain_text_success:
         return _fixed_check("qdrant", CheckState.HEALTHY, "Qdrant is healthy.")
     if response.state in {HttpState.UNREACHABLE, HttpState.TIMEOUT}:
         return _fixed_check(
