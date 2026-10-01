@@ -92,3 +92,24 @@ the next module authorized to enter planning.
   commit `a0ca39f`, including every workflow step.
 - Status: `Complete`.
 - Next module: Module 2 is authorized to enter planning.
+
+### Module 2 — Local implementation checkpoint
+
+- Commits: `c081528`, `0a7dd0b`, `b49de0e`, `ab7c030`, `92fd2ac`, and
+  `e47333e`; Task 7 documentation and CI gate changes are included in the next
+  local commit.
+- Local platform: macOS, Python 3.12.14, uv 0.12.21.
+- Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
+  passed; strict MyPy passed for 54 checked files; Pytest passed 165 tests;
+  source and wheel builds passed; console help, setup help, doctor help,
+  version, module-entry, and Git whitespace checks passed.
+- Acceptance coverage: fake-backed doctor and setup workflows exercise macOS
+  and Ubuntu behavior without contacting local services, pulling models, or
+  starting Docker. The GitHub Actions matrix runs those checks on both hosted
+  platforms.
+- Status: `In progress` pending whole-module review and GitHub Actions results
+  for the exact pushed Task 7 commit on macOS and Ubuntu.
+- Known limitations: system package installation remains guidance-only; Qwen
+  is an optional recommendation; CI intentionally substitutes deterministic
+  fakes for destructive or machine-specific service actions.
+- Next module: Module 3 remains gated.

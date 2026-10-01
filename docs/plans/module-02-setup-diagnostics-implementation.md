@@ -10,6 +10,16 @@
 
 **Spec:** `docs/design/repo-intel-v1-design.md`, especially sections 3, 5, 6, 10, and Module 2
 
+## Execution Status
+
+- Tasks 1–6 are implemented in commits `c081528`, `0a7dd0b`, `b49de0e`,
+  `ab7c030`, `92fd2ac`, and `e47333e`.
+- Task 7's local acceptance gate passed on macOS with Python 3.12.14 and uv
+  0.12.21: Ruff lint and format, strict MyPy, 165 tests, source and wheel
+  builds, all CLI smoke commands, and Git whitespace validation passed.
+- Module 2 remains `In progress` pending whole-module review and GitHub Actions
+  results for the exact pushed Task 7 commit on macOS and Ubuntu.
+
 ## Global Constraints
 
 - Support macOS and Ubuntu only; retain the explicit unsupported-platform error.
@@ -210,29 +220,29 @@ class DoctorReport:
 - Consumes: `RepoIntelError`, `ExitCode`
 - Produces: `CommandResult`, `CommandRunner`, `SubprocessCommandRunner`, `HttpState`, `JsonResponse`, `JsonHttpClient`, and `UrllibJsonHttpClient`
 
-- [ ] **Step 1: Write failing command-runner tests**
+- [x] **Step 1: Write failing command-runner tests**
 
 Test that `which()` returns an exact `Path`, an executable path containing spaces remains `args[0]`, `shell=False` is used, a timeout returns `timed_out=True` without raising, and `stream=True` does not retain stdout or stderr. Inject the subprocess and PATH lookup callables rather than executing machine commands.
 
-- [ ] **Step 2: Run the command-runner tests and verify the module is missing**
+- [x] **Step 2: Run the command-runner tests and verify the module is missing**
 
 Run: `uv run pytest tests/unit/test_runtime_commands.py -v`
 
 Expected: FAIL during import because `repo_intel.runtime.commands` does not exist.
 
-- [ ] **Step 3: Implement the command interfaces and adapter**
+- [x] **Step 3: Implement the command interfaces and adapter**
 
 Implement the signatures in “Public Interfaces.” Convert `TimeoutExpired` into a `CommandResult` with return code `124`; never use a string command or `shell=True`. Merge an explicit action environment onto a copy of the current environment without modifying `os.environ`. Mark captured stdout and stderr fields `repr=False`.
 
-- [ ] **Step 4: Write failing bounded-HTTP tests**
+- [x] **Step 4: Write failing bounded-HTTP tests**
 
 Cover valid JSON, connection refusal, socket timeout, non-2xx HTTP status, invalid JSON, and a response larger than 1 MiB. Assert all failures become `JsonResponse` states and no response body appears in exceptions or representations.
 
-- [ ] **Step 5: Implement `UrllibJsonHttpClient`**
+- [x] **Step 5: Implement `UrllibJsonHttpClient`**
 
 Use GET requests, a caller-supplied timeout, a 1 MiB response limit, UTF-8 JSON decoding, and the exact `HttpState` categories above. Mark the decoded payload `repr=False`. Do not follow this with retries; `doctor` is a snapshot.
 
-- [ ] **Step 6: Run focused and full tests**
+- [x] **Step 6: Run focused and full tests**
 
 Run: `uv run pytest tests/unit/test_runtime_commands.py tests/unit/test_http.py -v`
 
@@ -242,7 +252,7 @@ Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 ```bash
 git add src/repo_intel/runtime tests/unit/test_runtime_commands.py tests/unit/test_http.py
@@ -263,23 +273,23 @@ git commit -m "feat: add safe runtime adapters"
 - Consumes: `PlatformKind`, `CommandRunner`
 - Produces: `AcceleratorKind`, `HardwareProfile`, `ModelRecommendation`, `inspect_hardware(platform: PlatformKind, runner: CommandRunner, *, architecture: str | None = None, meminfo_path: Path = Path("/proc/meminfo")) -> HardwareProfile`, and `recommend_qwen(profile: HardwareProfile) -> ModelRecommendation`
 
-- [ ] **Step 1: Write failing recommendation-policy tests**
+- [x] **Step 1: Write failing recommendation-policy tests**
 
 Assert exact boundary behavior for unknown memory, 15 GiB, 16 GiB, 47 GiB, 48 GiB without an accelerator, 48 GiB with Apple Metal, and 48 GiB with NVIDIA CUDA. Unknown memory must recommend `qwen2.5-coder:1.5b` with `uncertain=True`; 48 GiB without confirmed acceleration must recommend `qwen2.5-coder:7b` with `uncertain=True`.
 
-- [ ] **Step 2: Implement the immutable models and pure recommendation function**
+- [x] **Step 2: Implement the immutable models and pure recommendation function**
 
 Use binary GiB (`1024**3`). Recommendation reasons must mention the evidence used without machine identifiers or raw command output.
 
-- [ ] **Step 3: Write failing platform inspection tests**
+- [x] **Step 3: Write failing platform inspection tests**
 
 Cover macOS `sysctl -n hw.memsize`, Apple Silicon Metal inference on `arm64`, Intel macOS without an inferred accelerator, Ubuntu `/proc/meminfo`, successful `nvidia-smi`, absent `nvidia-smi`, malformed memory values, missing files, command failure, and Unicode paths.
 
-- [ ] **Step 4: Implement `inspect_hardware`**
+- [x] **Step 4: Implement `inspect_hardware`**
 
 Resolve `sysctl` and `nvidia-smi` through `CommandRunner.which`. Parse only the total memory value and accelerator availability; discard raw output after parsing. Mark `complete=False` whenever required evidence is absent or malformed and reuse the existing typed platform error outside macOS and Ubuntu.
 
-- [ ] **Step 5: Run focused and full tests**
+- [x] **Step 5: Run focused and full tests**
 
 Run: `uv run pytest tests/unit/test_hardware.py tests/unit/test_recommendation.py -v`
 
@@ -289,7 +299,7 @@ Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add src/repo_intel/setup tests/unit/test_hardware.py tests/unit/test_recommendation.py
@@ -312,15 +322,15 @@ git commit -m "feat: recommend Qwen models from hardware"
 - Consumes: runtime adapters, `HardwareProfile`, `ModelRecommendation`, `PlatformKind`, and `ExitCode`
 - Produces: `CheckState`, `DiagnosticCheck`, `DoctorReport`, `check_executable(name: str, runner: CommandRunner, guidance: str) -> DiagnosticCheck`, and `run_doctor(platform: PlatformKind, runner: CommandRunner, http: JsonHttpClient, *, hardware_profile: HardwareProfile | None = None) -> DoctorReport`
 
-- [ ] **Step 1: Write failing executable-check tests**
+- [x] **Step 1: Write failing executable-check tests**
 
 Test installed and missing Git, ripgrep, Ollama, and Docker. Assert summaries contain only dependency names and fixed status text, not resolved paths or environment values.
 
-- [ ] **Step 2: Implement diagnostic records and PATH checks**
+- [x] **Step 2: Implement diagnostic records and PATH checks**
 
 `DoctorReport.exit_code` returns `EXTERNAL_SERVICE` when any required service is stopped or unhealthy, otherwise `DEPENDENCY` when a required command or `nomic-embed-text` is missing, otherwise `SUCCESS`. Use `DiagnosticCheck.required` rather than names to select failures. A recommended Qwen model is optional and must not change the exit code.
 
-- [ ] **Step 3: Write failing service and model tests**
+- [x] **Step 3: Write failing service and model tests**
 
 Cover:
 
@@ -341,15 +351,15 @@ Treat an unqualified requested model name as matching either the identical tag
 or the same tag with `:latest`; never treat another version or a prefix match
 as installed.
 
-- [ ] **Step 4: Implement service checks and doctor orchestration**
+- [x] **Step 4: Implement service checks and doctor orchestration**
 
 Probe only `http://127.0.0.1:11434/api/tags` and `http://127.0.0.1:6333/healthz`, each with a two-second timeout. Run `docker info --format {{.ServerVersion}}` with a five-second timeout. Keep check order deterministic: Git, ripgrep, Ollama, Docker, Qdrant, `nomic-embed-text`, recommended Qwen.
 
-- [ ] **Step 5: Prove doctor is read-only in an integration test**
+- [x] **Step 5: Prove doctor is read-only in an integration test**
 
 Use recording fakes and a nonexistent temporary application root. Assert the report is complete, no path is created, only `which`, `docker info`, and HTTP GET operations occur, and no model pull or Docker Compose command is issued.
 
-- [ ] **Step 6: Run focused and full tests**
+- [x] **Step 6: Run focused and full tests**
 
 Run: `uv run pytest tests/unit/test_dependencies.py tests/unit/test_service_diagnostics.py tests/integration/test_doctor_workflow.py -v`
 
@@ -359,7 +369,7 @@ Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```bash
 git add src/repo_intel/diagnostics tests/unit/test_dependencies.py tests/unit/test_service_diagnostics.py tests/integration/test_doctor_workflow.py
@@ -379,7 +389,7 @@ git commit -m "feat: add read-only system diagnostics"
 - Consumes: `AppPaths`
 - Produces: `SetupPaths`, `PreparedSetup`, `setup_paths(app_paths: AppPaths) -> SetupPaths`, and `prepare_setup_files(app_paths: AppPaths) -> PreparedSetup`
 
-- [ ] **Step 1: Write failing setup-file tests**
+- [x] **Step 1: Write failing setup-file tests**
 
 Assert exact locations:
 
@@ -389,15 +399,15 @@ Assert exact locations:
 
 Cover spaces and Unicode in every root, a missing root, an existing user config with custom bytes, an unchanged managed file, a stale managed file, write failure before `os.replace`, and two consecutive successful runs. Existing user configuration must remain byte-for-byte unchanged; managed output must be deterministic.
 
-- [ ] **Step 2: Add the Compose resource and package-resource test**
+- [x] **Step 2: Add the Compose resource and package-resource test**
 
 Pin `qdrant/qdrant:v1.19.1`, bind REST and gRPC ports as `127.0.0.1:6333:6333` and `127.0.0.1:6334:6334`, use the rendered absolute Qdrant data directory as a bind mount, and set `restart: "no"`. Add a wheel-content assertion proving the template is packaged.
 
-- [ ] **Step 3: Implement atomic preparation**
+- [x] **Step 3: Implement atomic preparation**
 
 Create only platform-owned directories. Create `config.toml` only when absent, with valid TOML comments and no secrets. Render the Compose template using JSON quoting for the absolute bind-mount path, write temporary files in the destination directory, flush and `fsync`, then replace atomically. Return which paths changed so the CLI can explain idempotency.
 
-- [ ] **Step 4: Run focused tests and inspect built artifacts**
+- [x] **Step 4: Run focused tests and inspect built artifacts**
 
 Run: `uv run pytest tests/unit/test_setup_files.py tests/unit/test_package.py -v`
 
@@ -407,13 +417,13 @@ Run: `uv build`
 
 Expected: the source distribution and wheel contain `qdrant.compose.yaml`.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```bash
 git add pyproject.toml src/repo_intel/setup/files.py src/repo_intel/setup/resources/qdrant.compose.yaml tests/unit/test_setup_files.py tests/unit/test_package.py
@@ -431,27 +441,27 @@ git commit -m "feat: prepare managed Qdrant service files"
 - Consumes: `DoctorReport`, `SetupPaths`, `CommandRunner`, `SetupActionKind`
 - Produces: `SetupAction`, `SetupActionResult`, `plan_setup_actions(report: DoctorReport, setup: SetupPaths, runner: CommandRunner) -> tuple[SetupAction, ...]`, and `execute_setup_action(action: SetupAction, runner: CommandRunner) -> SetupActionResult`
 
-- [ ] **Step 1: Write failing action-planning tests**
+- [x] **Step 1: Write failing action-planning tests**
 
 Assert that missing `nomic-embed-text` plans `ollama pull nomic-embed-text`, a missing recommended Qwen plans the exact recommended tag, and stopped Qdrant plans `docker compose --project-name repo-intel --file <absolute-compose-path> up --detach qdrant`. Healthy or installed items produce no action. Missing Ollama or Docker commands produce guidance rather than impossible actions.
 
-- [ ] **Step 2: Implement immutable actions and deterministic planning**
+- [x] **Step 2: Implement immutable actions and deterministic planning**
 
 Every action stores its kind, fixed description, exact argument tuple, timeout, streaming choice, and optional environment. Model pulls use streaming output and a 3,600-second timeout; Qdrant startup uses a 120-second timeout. Resolve executables through `which` before constructing actions.
 
-- [ ] **Step 3: Write failing execution tests**
+- [x] **Step 3: Write failing execution tests**
 
 Cover successful pulls/startup, timeout, nonzero exit, a path containing spaces, and a disappearing executable. Assert failures raise typed `DEPENDENCY` or `EXTERNAL_SERVICE` errors with actionable fixed guidance and no captured command output.
 
-- [ ] **Step 4: Implement one-action execution**
+- [x] **Step 4: Implement one-action execution**
 
 Execute only an action already selected by the caller; this layer must never infer consent. Use argument sequences, never a shell. Do not retry model downloads or service startup automatically.
 
-- [ ] **Step 5: Add the idempotent workflow integration test**
+- [x] **Step 5: Add the idempotent workflow integration test**
 
 Prepare files, construct a report, explicitly approve all planned actions in a fake executor, then rerun against a healthy report. Assert the second run changes no files and executes no external action. Add a failure midway and assert a later rerun plans only unfinished work.
 
-- [ ] **Step 6: Run focused and full tests**
+- [x] **Step 6: Run focused and full tests**
 
 Run: `uv run pytest tests/unit/test_setup_actions.py tests/integration/test_setup_workflow.py -v`
 
@@ -461,7 +471,7 @@ Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```bash
 git add src/repo_intel/setup/actions.py tests/unit/test_setup_actions.py tests/integration/test_setup_workflow.py
@@ -483,15 +493,15 @@ git commit -m "feat: execute confirmed setup actions"
 - Consumes: platform detection/paths, `run_doctor`, `prepare_setup_files`, setup actions, `RepoIntelError`
 - Produces: `repo-intel doctor` and `repo-intel setup` with `--pull-embedding`, `--pull-qwen`, `--start-qdrant`, and `--no-input`
 
-- [ ] **Step 1: Write failing guidance and doctor CLI tests**
+- [x] **Step 1: Write failing guidance and doctor CLI tests**
 
 Assert macOS and Ubuntu provide distinct fixed guidance for missing Git, ripgrep, Ollama, and Docker without executing installers. Test deterministic doctor rows, the Qwen recommendation and uncertainty note, `SUCCESS` for a healthy report, `DEPENDENCY` for missing requirements, and `EXTERNAL_SERVICE` for stopped or unhealthy services. Assert output excludes raw paths, environment values, stderr, HTTP bodies, and supplied sentinel secrets.
 
-- [ ] **Step 2: Implement guidance and doctor rendering**
+- [x] **Step 2: Implement guidance and doctor rendering**
 
 Render one row per check in report order and a final recommendation. Catch only typed application errors; unexpected failures retain the existing internal-error behavior. Do not create application paths while resolving `doctor` dependencies.
 
-- [ ] **Step 3: Write failing setup CLI tests**
+- [x] **Step 3: Write failing setup CLI tests**
 
 Cover:
 
@@ -505,15 +515,15 @@ Cover:
 - a second healthy run reports no changes and performs no action
 - unsupported platforms fail before writing files
 
-- [ ] **Step 4: Implement setup orchestration**
+- [x] **Step 4: Implement setup orchestration**
 
 Run a pre-setup diagnostic snapshot, prepare local files, plan actions, collect consent, execute approved actions in embedding/Qwen/Qdrant order, then run a final read-only diagnostic snapshot. Explicit flags count as consent only for their named action; `--no-input` declines every other action. Never add a global `--yes` option.
 
-- [ ] **Step 5: Register commands and preserve existing CLI behavior**
+- [x] **Step 5: Register commands and preserve existing CLI behavior**
 
 Keep `version`, no-argument help, and `python -m repo_intel` unchanged. Update help tests to require `setup`, `doctor`, and `version`.
 
-- [ ] **Step 6: Run focused and full tests**
+- [x] **Step 6: Run focused and full tests**
 
 Run: `uv run pytest tests/unit/test_cli.py tests/unit/test_cli_doctor.py tests/unit/test_cli_setup.py -v`
 
@@ -523,7 +533,7 @@ Run: `uv run pytest -q`
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit Task 6**
+- [x] **Step 7: Commit Task 6**
 
 ```bash
 git add src/repo_intel/cli src/repo_intel/setup/guidance.py tests/unit/test_cli.py tests/unit/test_cli_doctor.py tests/unit/test_cli_setup.py
@@ -542,15 +552,15 @@ git commit -m "feat: expose setup and doctor workflows"
 - Consumes: every Module 2 deliverable
 - Produces: documented clone-to-setup workflow and macOS/Ubuntu evidence for the Module 2 gate
 
-- [ ] **Step 1: Add deterministic CI acceptance commands**
+- [x] **Step 1: Add deterministic CI acceptance commands**
 
 Add fake-backed acceptance tests for macOS and Ubuntu to the existing matrix; do not pull models, start Docker, or contact localhost services in CI. Add CLI help smoke checks for `repo-intel setup --help` and `repo-intel doctor --help`.
 
-- [ ] **Step 2: Document setup, consent, and troubleshooting**
+- [x] **Step 2: Document setup, consent, and troubleshooting**
 
 Document `uv sync`, `uv run repo-intel doctor`, and `uv run repo-intel setup`; explain every explicit setup flag, model tiers, platform locations, localhost ports, `--no-input`, rerun behavior, and that system dependencies are guidance-only. Include manual commands for a user to inspect `doctor`, decline all setup actions, approve one action at a time, and rerun idempotently.
 
-- [ ] **Step 3: Run the complete local gate**
+- [x] **Step 3: Run the complete local gate**
 
 Run:
 
@@ -571,7 +581,7 @@ git diff --check
 
 Expected: every command exits zero.
 
-- [ ] **Step 4: Record the local checkpoint and commit Task 7**
+- [x] **Step 4: Record the local checkpoint and commit Task 7**
 
 Keep Module 2 `In progress` until the pushed commit passes both GitHub Actions jobs.
 

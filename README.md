@@ -4,9 +4,10 @@
 coding agents. It is designed to find a small, traceable evidence set for an
 engineering task instead of placing an entire repository in a model context.
 
-The project is under active development. Module 1 establishes the package,
-CLI contracts, typed configuration, platform paths, and service interfaces.
-Repository indexing begins in later modules.
+The project is under active development. Modules 1 and 2 provide the Python
+package, stable CLI, platform-aware local setup, read-only diagnostics, and
+hardware-aware Qwen recommendations. Repository indexing begins in later
+modules.
 
 ## Supported platforms
 
@@ -16,11 +17,15 @@ Repository indexing begins in later modules.
 
 Other Linux distributions are not part of the first-release test matrix.
 
-## Prerequisite
+## Prerequisites
 
 Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) before
-cloning the project. `uv` manages the Python environment and locked project
-dependencies.
+setting up the Python environment. A complete local runtime also uses Git,
+ripgrep, Ollama, and Docker with the Docker Compose plugin.
+
+`repo_intel` does not install system software. `doctor` reports missing
+dependencies and prints platform-specific guidance so you remain in control of
+system changes.
 
 ## Clone and install
 
@@ -30,17 +35,127 @@ cd repo_intel
 uv sync --locked --all-groups
 ```
 
+Inspect the machine before changing anything:
+
+```bash
+uv run repo-intel doctor
+```
+
+`doctor` is read-only. It checks Git, ripgrep, Ollama, Docker, Qdrant,
+`nomic-embed-text`, and the recommended Qwen model. It distinguishes missing
+dependencies from stopped and unhealthy services. Exit code `5` means a
+required dependency is missing; exit code `7` means a required local service
+is stopped or unhealthy.
+
+## Safe setup
+
+Run interactive setup after reviewing `doctor`:
+
+```bash
+uv run repo-intel setup
+```
+
+Setup always prepares deterministic application-owned configuration and a
+pinned Qdrant Compose file. Every external action is proposed separately and
+defaults to “no”. There is deliberately no global `--yes` option.
+
+Explicit flags approve only their named action:
+
+```bash
+# Pull the required embedding model if it is missing.
+uv run repo-intel setup --no-input --pull-embedding
+
+# Pull the model recommended for this machine if it is missing.
+uv run repo-intel setup --no-input --pull-qwen
+
+# Start the managed Qdrant service if it is stopped.
+uv run repo-intel setup --no-input --start-qdrant
+```
+
+`--no-input` declines every action that does not have its own explicit flag.
+Declining or cancelling is successful and leaves those external services
+unchanged. Re-running setup preserves user configuration, updates only the
+managed Compose file when necessary, and does nothing when the current state
+is already correct.
+
+To exercise the full manual flow:
+
+```bash
+uv run repo-intel doctor
+uv run repo-intel setup --no-input
+uv run repo-intel setup --no-input --pull-embedding
+uv run repo-intel setup --no-input --pull-qwen
+uv run repo-intel setup --no-input --start-qdrant
+uv run repo-intel setup --no-input
+uv run repo-intel doctor
+```
+
+Model pulls can be large. Each pull requires its own prompt confirmation or
+explicit flag. Qdrant startup likewise requires its own confirmation or flag.
+
+## Model recommendation policy
+
+Setup inspects memory, architecture, and supported acceleration when the host
+exposes them reliably:
+
+| Detected hardware | Recommendation |
+|---|---|
+| Less than 16 GiB memory | `qwen2.5-coder:1.5b` |
+| 16 through 47 GiB memory | `qwen2.5-coder:7b` |
+| At least 48 GiB plus Apple Metal or NVIDIA CUDA | `qwen3-coder:30b` |
+
+Unknown memory falls back to `qwen2.5-coder:1.5b`. At least 48 GiB without a
+confirmed supported accelerator falls back to `qwen2.5-coder:7b`. Both cases
+are labelled uncertain. Qwen is optional for deterministic v1 indexing and
+retrieval; `nomic-embed-text` is required for semantic indexing.
+
+## Local files and services
+
+On macOS, state is placed below the normal user Library locations:
+
+- configuration: `~/Library/Application Support/repo-intel/config`
+- generated data: `~/Library/Application Support/repo-intel/data`
+- cache: `~/Library/Caches/repo-intel`
+- logs: `~/Library/Logs/repo-intel`
+
+On Ubuntu, XDG locations are honored, with these defaults:
+
+- configuration: `~/.config/repo-intel`
+- generated data: `~/.local/share/repo-intel`
+- cache: `~/.cache/repo-intel`
+- logs: `~/.local/state/repo-intel/log`
+
+The user configuration is `config.toml`. The managed service definition is
+`qdrant.compose.yaml`, pinned to `qdrant/qdrant:v1.19.1`. Qdrant storage is
+under the platform data directory. Its REST and gRPC ports bind only to
+`127.0.0.1:6333` and `127.0.0.1:6334`.
+
+## Troubleshooting
+
+- If `doctor` reports a missing program, follow its macOS or Ubuntu guidance;
+  setup will not invoke a package manager for you.
+- If Ollama is stopped, start it normally and rerun `doctor` before approving
+  model pulls.
+- If Docker is stopped or unhealthy, restore Docker daemon access before
+  approving Qdrant startup.
+- If Qdrant is stopped, run `setup --no-input --start-qdrant`; if it is
+  unhealthy, inspect the local container and rerun `doctor`.
+- If a model pull or service start fails offline, restore connectivity or the
+  local service and rerun setup. Completed actions are not repeated.
+- Paths containing spaces and Unicode are supported; do not move generated
+  files into the source repository.
+
 ## Smoke checks
 
 ```bash
 uv run repo-intel --help
+uv run repo-intel setup --help
+uv run repo-intel doctor --help
 uv run repo-intel version
 uv run python -m repo_intel --help
 ```
 
-Module 1 imports and smoke commands do not require or contact Ollama, Docker,
-or Qdrant. Later modules add explicit, confirmed setup for those local
-services.
+Help, version, and package imports do not contact Ollama, Docker, or Qdrant.
 
 ## Development checks
 
@@ -52,7 +167,9 @@ uv run pytest -q
 uv build
 ```
 
-The same checks run on macOS and Ubuntu in GitHub Actions.
+The same checks and fake-backed setup/doctor acceptance workflows run on macOS
+and Ubuntu in GitHub Actions. CI does not pull models, start Docker, or contact
+local services.
 
 ## Design and execution references
 

@@ -44,15 +44,27 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Check setup and doctor workflows
+        run: >-
+          uv run pytest
+          tests/integration/test_doctor_workflow.py
+          tests/integration/test_setup_workflow.py
+          -q
+
       - name: Build distributions
         run: uv build
 
       - name: Check console help
         run: uv run repo-intel --help
 
+      - name: Check setup help
+        run: uv run repo-intel setup --help
+
+      - name: Check doctor help
+        run: uv run repo-intel doctor --help
+
       - name: Check console version
         run: uv run repo-intel version
 
       - name: Check module entry point
         run: uv run python -m repo_intel --help
-
