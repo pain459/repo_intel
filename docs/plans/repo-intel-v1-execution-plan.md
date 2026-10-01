@@ -19,7 +19,7 @@ module can be reviewed, executed, and reopened independently.
 
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
-| 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
+| 1 | Project foundation and contracts | Reopened | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Not planned | — |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
@@ -50,6 +50,7 @@ before continuing.
 | 2026-10-01 | All | No task-level execution index | Adopt one living index plus one detailed plan per module | Keep the reference current without creating one unreviewable plan | Every module must link its approved detailed plan before implementation |
 | 2026-10-01 | 1 | Planned | In progress | User approved native execution on the main checkout | Module 2 remains gated until Module 1 passes both platform CI jobs |
 | 2026-10-01 | 1 | In progress | Complete | Local gate passed and GitHub Actions passed on macOS and Ubuntu | Module 2 is authorized to enter planning |
+| 2026-10-01 | 1 | Complete | Reopened | Final review restored accidentally removed ignore rules and rejected relative XDG roots | Module 2 is gated until CI passes the reviewed Module 1 HEAD |
 
 ## Module Completion Record
 
@@ -68,7 +69,23 @@ the next module authorized to enter planning.
 - Cross-platform evidence: [GitHub Actions run 36864796238](https://github.com/pain459/repo_intel/actions/runs/36864796238)
   passed `Quality (ubuntu-latest)` and `Quality (macos-latest)` with every
   workflow step successful.
-- Status: `Complete`.
+- Status at this checkpoint: `Complete` for commit `c4b6852`; superseded by
+  the final-review correction below.
 - Known limitation: Module 1 defines foundation contracts only; setup,
   diagnostics, repository registration, and indexing are intentionally absent.
-- Next module: Module 2 is authorized to enter planning.
+- Next module at this checkpoint: Module 2 was authorized to enter planning.
+
+### Module 1 — Final-review correction checkpoint
+
+- Review-fix commit: `2baa134`
+- Corrections: restored the repository's pre-existing Python ignore rules and
+  made Ubuntu ignore relative `XDG_*_HOME` overrides so generated state cannot
+  be placed beneath the working directory.
+- Local checks: Ruff lint passed; Ruff format passed; strict MyPy passed for
+  24 source files; Pytest passed 66 tests; source and wheel builds passed; Git
+  whitespace validation and all three CLI smoke commands passed.
+- Cross-platform evidence: pending a GitHub Actions run for commit `2baa134` or
+  a descendant containing the same correction.
+- Status: `Reopened`.
+- Next module: Module 2 remains gated until both macOS and Ubuntu CI jobs pass
+  on the reviewed Module 1 HEAD.

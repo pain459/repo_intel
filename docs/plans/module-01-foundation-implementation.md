@@ -16,13 +16,17 @@
   `8764caf`, and `200e1d1`.
 - Task 6 implementation and the complete local macOS gate are complete in
   commits `1cbc3ef` and `aee0165`.
-- Local evidence: Ruff lint and format checks passed, strict MyPy passed for
-  24 source files, all 65 tests passed, both distributions built, and all
-  three CLI smoke commands exited successfully.
+- Final review added commit `2baa134`, restoring the repository's original
+  Python ignore coverage and rejecting relative Ubuntu `XDG_*_HOME` roots.
+- Local evidence after that correction: Ruff lint and format checks passed,
+  strict MyPy passed for 24 source files, all 66 tests passed, both
+  distributions built, and Git whitespace validation plus all three CLI smoke
+  commands passed.
 - GitHub Actions run `36864796238` passed both `Quality (macos-latest)` and
   `Quality (ubuntu-latest)`, including dependency installation, lint,
   formatting, strict typing, tests, builds, and CLI smoke checks.
-- Task 6 and Module 1 are complete. Module 2 is authorized to enter planning.
+- Task 6 remains complete, but Module 1 is reopened pending both GitHub Actions
+  platform jobs on the reviewed HEAD. Module 2 remains gated.
 
 ## Global Constraints
 
