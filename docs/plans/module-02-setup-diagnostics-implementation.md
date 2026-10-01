@@ -22,13 +22,13 @@
   plain text, while the shared bounded client intentionally accepts JSON only.
   Commit `fd1dd31` now treats only a 2xx plain-text result from that fixed
   Qdrant endpoint as healthy; the red/green regression and full gate passed.
-- No Critical or Important review finding remains. Module 2 stays `In progress`
-  pending the real-machine acceptance run requested after review and GitHub
-  Actions results for the exact pushed reviewed HEAD on macOS and Ubuntu.
+- No Critical or Important review finding remains. Module 2 is `Complete`.
 - Task 8's implementation gate passed locally: Ruff lint and format, strict
   MyPy across 57 checked files, 173 tests, source and wheel builds, packaged
   acceptance support, help disclosure, and Git whitespace validation passed.
-  The separately confirmed live run remains pending on the user's host.
+- The separately confirmed live runner passed on the user's macOS host with
+  Python 3.12.14. The exact pushed commit `ba8103e` also passed every step of
+  GitHub Actions run 36874738799 on macOS and Ubuntu.
 
 ## Global Constraints
 
@@ -600,11 +600,11 @@ git add .github/workflows/ci.yml README.md docs/plans/module-02-setup-diagnostic
 git commit -m "ci: gate setup diagnostics on both platforms"
 ```
 
-- [ ] **Step 5: Verify remote macOS and Ubuntu jobs**
+- [x] **Step 5: Verify remote macOS and Ubuntu jobs**
 
 After the user pushes, verify both matrix jobs pass for the exact reviewed commit. Record the run URL, commit, local commands, platform evidence, known limitations, and the next authorized module in the execution index.
 
-- [ ] **Step 6: Close the Module 2 gate**
+- [x] **Step 6: Close the Module 2 gate**
 
 Mark Module 2 `Complete` only after the local gate, whole-module review, and both remote jobs pass. Commit the completion record locally; do not push it.
 
@@ -646,7 +646,7 @@ setup. Do not fake external services or remove successful resources.
 Document prerequisites, the one command to run, separate confirmations,
 retained resources, validations, and result codes.
 
-- [ ] **Step 4: Run on the user's real machine**
+- [x] **Step 4: Run on the user's real machine**
 
 Run:
 
@@ -658,10 +658,18 @@ Expected: every prompt is approved or already satisfied, the final doctor exits
 zero, the managed container inspection passes, the rerun is idempotent, and the
 runner exits zero with `ACCEPTANCE PASSED`.
 
-- [ ] **Step 5: Record real-machine and remote CI evidence**
+- [x] **Step 5: Record real-machine and remote CI evidence**
 
 Add the complete local result and exact pushed GitHub Actions run to the living
 execution index before closing Module 2.
+
+Recorded evidence: the user ran the acceptance command on macOS with Python
+3.12.14. All 173 tests and the complete quality gate passed; native macOS
+paths, real dependency diagnostics, installed `nomic-embed-text` and
+`qwen2.5-coder:7b`, managed Qdrant startup/health, container ownership, and
+idempotent setup all passed. The runner ended with `ACCEPTANCE PASSED`.
+GitHub Actions run 36874738799 passed the macOS and Ubuntu jobs for exact
+commit `ba8103eb6e71353d548893aff7a47b598ca40cc5`.
 
 ## Plan Self-Review Record
 

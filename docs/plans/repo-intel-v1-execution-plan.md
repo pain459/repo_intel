@@ -20,7 +20,7 @@ module can be reviewed, executed, and reopened independently.
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
 | 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
-| 2 | Setup, diagnostics, and model recommendation | In progress | `docs/plans/module-02-setup-diagnostics-implementation.md` |
+| 2 | Setup, diagnostics, and model recommendation | Complete | `docs/plans/module-02-setup-diagnostics-implementation.md` |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
@@ -56,6 +56,7 @@ before continuing.
 | 2026-10-01 | 2 | Planned | In progress | User approved native execution of the reviewed task-level plan | Module 3 remains gated until Module 2 passes its complete local and cross-platform gate |
 | 2026-10-01 | 2 | Treat only decoded JSON as a healthy Qdrant probe | Accept the documented 2xx plain-text `/healthz` response for the fixed Qdrant endpoint | Whole-module review found that the JSON-only adapter otherwise marked a real healthy Qdrant service unhealthy | Regression coverage and the complete local gate now pass; remote CI must evaluate the reviewed HEAD |
 | 2026-10-01 | 2 | Fake-backed acceptance plus manual commands were sufficient for the local gate | Require one separately confirmed real-machine runner covering actual model pulls and managed Qdrant startup | The user requested an end-to-end test of the delivered Modules 1 and 2 using real host services | Module 2 remains in progress until the live runner and exact pushed CI matrix pass |
+| 2026-10-01 | 2 | In progress | Complete | The real-machine runner passed on macOS and the exact pushed acceptance-runner commit passed both GitHub Actions matrix jobs | Module 3 is authorized to enter planning |
 
 ## Module Completion Record
 
@@ -95,10 +96,11 @@ the next module authorized to enter planning.
 - Status: `Complete`.
 - Next module: Module 2 is authorized to enter planning.
 
-### Module 2 — Reviewed local implementation checkpoint
+### Module 2 — Completion record
 
 - Commits: `c081528`, `0a7dd0b`, `b49de0e`, `ab7c030`, `92fd2ac`, and
-  `e47333e`; Task 7 is `8377a67`; whole-module review correction is `fd1dd31`.
+  `e47333e`; Task 7 is `8377a67`; whole-module review correction is `fd1dd31`;
+  real-machine acceptance support is `ba8103e`.
 - Local platform: macOS, Python 3.12.14, uv 0.12.21.
 - Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
   passed; strict MyPy passed for 57 checked files; Pytest passed 173 tests;
@@ -113,14 +115,22 @@ the next module authorized to enter planning.
   Important Qdrant health-contract defect. A read-only production `doctor`
   smoke on macOS also returned categorized, secret-safe findings and the
   expected conservative hardware fallback under sandbox-restricted `sysctl`.
-- Real-machine acceptance: `scripts/acceptance_modules_01_02.py` now performs
-  the full Module 1 quality and public-contract gate, then separately confirms
-  real embedding/Qwen pulls and managed Qdrant startup. Its live execution on
-  the user's host is pending and is now part of the Module 2 gate.
-- Status: `In progress`; no Critical or Important review finding remains, but
-  the real-machine runner and GitHub Actions must pass for the exact pushed
-  reviewed HEAD before the gate closes.
+- Real-machine acceptance: `uv run python scripts/acceptance_modules_01_02.py`
+  passed on the user's macOS host with Python 3.12.14. It passed the complete
+  Module 1 gate, native macOS path checks, read-only diagnostics, safe
+  non-interactive setup, the pinned localhost-only Compose contract, real
+  `nomic-embed-text` and `qwen2.5-coder:7b` availability, managed Qdrant
+  startup and health, container ownership checks, and an idempotent setup
+  rerun. The final result was `ACCEPTANCE PASSED`.
+- Cross-platform evidence: [GitHub Actions run 36874738799](https://github.com/pain459/repo_intel/actions/runs/36874738799)
+  passed `Quality (ubuntu-latest)` and `Quality (macos-latest)` for exact
+  commit `ba8103eb6e71353d548893aff7a47b598ca40cc5`, including all workflow
+  steps.
+- Status: `Complete`; the local quality gate, whole-module review,
+  real-machine acceptance, and exact-commit macOS/Ubuntu CI gate all passed.
 - Known limitations: system package installation remains guidance-only; Qwen
   is an optional recommendation; CI intentionally substitutes deterministic
-  fakes for destructive or machine-specific service actions.
-- Next module: Module 3 remains gated.
+  fakes for destructive or machine-specific service actions. The accepted
+  Ollama models and managed Qdrant container/data intentionally remain on the
+  user's machine.
+- Next module: Module 3 is authorized to enter planning.
