@@ -23,8 +23,12 @@
   Commit `fd1dd31` now treats only a 2xx plain-text result from that fixed
   Qdrant endpoint as healthy; the red/green regression and full gate passed.
 - No Critical or Important review finding remains. Module 2 stays `In progress`
-  pending GitHub Actions results for the exact pushed reviewed HEAD on macOS
-  and Ubuntu.
+  pending the real-machine acceptance run requested after review and GitHub
+  Actions results for the exact pushed reviewed HEAD on macOS and Ubuntu.
+- Task 8's implementation gate passed locally: Ruff lint and format, strict
+  MyPy across 57 checked files, 173 tests, source and wheel builds, packaged
+  acceptance support, help disclosure, and Git whitespace validation passed.
+  The separately confirmed live run remains pending on the user's host.
 
 ## Global Constraints
 
@@ -608,6 +612,56 @@ Mark Module 2 `Complete` only after the local gate, whole-module review, and bot
 git add docs/plans/module-02-setup-diagnostics-implementation.md docs/plans/repo-intel-v1-execution-plan.md
 git commit -m "docs: close module two gate"
 ```
+
+### Task 8: Real-machine Module 1–2 acceptance runner
+
+**Files:**
+- Create: `src/repo_intel/acceptance.py`
+- Create: `scripts/acceptance_modules_01_02.py`
+- Create: `tests/unit/test_acceptance_runner.py`
+- Create: `docs/testing/modules-01-02-real-acceptance.md`
+- Modify: `README.md`
+- Modify: `.github/workflows/ci.yml`
+- Modify: `docs/plans/repo-intel-v1-execution-plan.md`
+
+**Interfaces:**
+- Consumes: every Module 1 and Module 2 deliverable plus real host services
+- Produces: separately confirmed, repeatable real-machine acceptance evidence
+
+- [x] **Step 1: Add tested parsing and safety contracts**
+
+Parse the stable doctor surface, reject incomplete diagnostic output, validate
+the pinned localhost-only Compose contract, and default every live-action
+confirmation to no.
+
+- [x] **Step 2: Add the real acceptance runner**
+
+Run the complete quality gate and Module 1 public contracts. Then exercise
+read-only doctor, unapproved setup, real embedding and Qwen pulls, real managed
+Qdrant startup, runtime container inspection, final doctor, and idempotent
+setup. Do not fake external services or remove successful resources.
+
+- [x] **Step 3: Document effects and execution**
+
+Document prerequisites, the one command to run, separate confirmations,
+retained resources, validations, and result codes.
+
+- [ ] **Step 4: Run on the user's real machine**
+
+Run:
+
+```bash
+uv run python scripts/acceptance_modules_01_02.py
+```
+
+Expected: every prompt is approved or already satisfied, the final doctor exits
+zero, the managed container inspection passes, the rerun is idempotent, and the
+runner exits zero with `ACCEPTANCE PASSED`.
+
+- [ ] **Step 5: Record real-machine and remote CI evidence**
+
+Add the complete local result and exact pushed GitHub Actions run to the living
+execution index before closing Module 2.
 
 ## Plan Self-Review Record
 

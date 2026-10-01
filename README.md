@@ -162,7 +162,7 @@ Help, version, and package imports do not contact Ollama, Docker, or Qdrant.
 ```bash
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src/repo_intel tests
+uv run mypy src/repo_intel tests scripts
 uv run pytest -q
 uv build
 ```
@@ -170,6 +170,21 @@ uv build
 The same checks and fake-backed setup/doctor acceptance workflows run on macOS
 and Ubuntu in GitHub Actions. CI does not pull models, start Docker, or contact
 local services.
+
+## Real Module 1–2 acceptance test
+
+After starting Ollama and Docker, run the real-machine acceptance workflow:
+
+```bash
+uv run python scripts/acceptance_modules_01_02.py
+```
+
+This performs the complete quality gate, uses real platform paths and services,
+and separately asks permission to download `nomic-embed-text`, download the
+hardware-recommended Qwen model, and start managed Qdrant. Successful resources
+remain installed for normal use. See the
+[`Modules 1–2 real-machine acceptance guide`](docs/testing/modules-01-02-real-acceptance.md)
+for prerequisites, validations, retained resources, and result codes.
 
 ## Design and execution references
 

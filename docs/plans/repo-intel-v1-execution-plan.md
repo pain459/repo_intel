@@ -55,6 +55,7 @@ before continuing.
 | 2026-10-01 | 2 | Not planned | Planned | Approved v1 design was expanded into a task-level Module 2 plan | Implementation awaits plan review |
 | 2026-10-01 | 2 | Planned | In progress | User approved native execution of the reviewed task-level plan | Module 3 remains gated until Module 2 passes its complete local and cross-platform gate |
 | 2026-10-01 | 2 | Treat only decoded JSON as a healthy Qdrant probe | Accept the documented 2xx plain-text `/healthz` response for the fixed Qdrant endpoint | Whole-module review found that the JSON-only adapter otherwise marked a real healthy Qdrant service unhealthy | Regression coverage and the complete local gate now pass; remote CI must evaluate the reviewed HEAD |
+| 2026-10-01 | 2 | Fake-backed acceptance plus manual commands were sufficient for the local gate | Require one separately confirmed real-machine runner covering actual model pulls and managed Qdrant startup | The user requested an end-to-end test of the delivered Modules 1 and 2 using real host services | Module 2 remains in progress until the live runner and exact pushed CI matrix pass |
 
 ## Module Completion Record
 
@@ -100,9 +101,10 @@ the next module authorized to enter planning.
   `e47333e`; Task 7 is `8377a67`; whole-module review correction is `fd1dd31`.
 - Local platform: macOS, Python 3.12.14, uv 0.12.21.
 - Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
-  passed; strict MyPy passed for 54 checked files; Pytest passed 165 tests;
+  passed; strict MyPy passed for 57 checked files; Pytest passed 173 tests;
   source and wheel builds passed; console help, setup help, doctor help,
-  version, module-entry, and Git whitespace checks passed.
+  version, module-entry, real-acceptance help, package-resource, and Git
+  whitespace checks passed.
 - Acceptance coverage: fake-backed doctor and setup workflows exercise macOS
   and Ubuntu behavior without contacting local services, pulling models, or
   starting Docker. The GitHub Actions matrix runs those checks on both hosted
@@ -111,9 +113,13 @@ the next module authorized to enter planning.
   Important Qdrant health-contract defect. A read-only production `doctor`
   smoke on macOS also returned categorized, secret-safe findings and the
   expected conservative hardware fallback under sandbox-restricted `sysctl`.
+- Real-machine acceptance: `scripts/acceptance_modules_01_02.py` now performs
+  the full Module 1 quality and public-contract gate, then separately confirms
+  real embedding/Qwen pulls and managed Qdrant startup. Its live execution on
+  the user's host is pending and is now part of the Module 2 gate.
 - Status: `In progress`; no Critical or Important review finding remains, but
-  GitHub Actions must pass for the exact pushed reviewed HEAD on macOS and
-  Ubuntu before the gate closes.
+  the real-machine runner and GitHub Actions must pass for the exact pushed
+  reviewed HEAD before the gate closes.
 - Known limitations: system package installation remains guidance-only; Qwen
   is an optional recommendation; CI intentionally substitutes deterministic
   fakes for destructive or machine-specific service actions.
