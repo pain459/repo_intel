@@ -11,6 +11,7 @@ from repo_intel.projects.models import (
     ProjectStatus,
     RepositoryIdentity,
 )
+from repo_intel.projects.registry import SCHEMA_VERSION, ProjectRegistry, RegistryWriteConflict
 from repo_intel.projects.resolver import resolve_repository
 
 __all__ = [
@@ -22,6 +23,9 @@ __all__ = [
     "ProjectRecord",
     "ProjectStatus",
     "RepositoryIdentity",
+    "SCHEMA_VERSION",
+    "ProjectRegistry",
+    "RegistryWriteConflict",
     "project_paths",
     "provision_project_paths",
     "registry_path",
