@@ -1,6 +1,6 @@
 # Module 3: Project Registry, Storage, and Cleanup Design
 
-**Status:** Draft for written-spec review
+**Status:** Approved
 
 **Date:** 2026-10-01
 
@@ -80,6 +80,12 @@ No marker or identifier is written into the source tree or Git directory.
 directory. It owns schema creation, migrations, typed record conversion, and
 short transactional mutations. It does not create project directories or run
 cleanup providers.
+
+Constructing the registry performs no I/O. Read-only lookup and listing treat
+an absent database as an empty registry and do not create files or
+directories. Schema creation and supported migrations occur only when a
+mutating workflow opens the registry for writing; read-only access rejects an
+incompatible existing schema without modifying it.
 
 The initial schema contains:
 
@@ -161,15 +167,19 @@ The lifecycle states are:
 Allowed transitions are:
 
 ```text
-new -> initializing -> active -> removing -> deleted
-          |             |          |
-          +-- retry ----+          +-- retry until every provider completes
+new          -> initializing
+initializing -> active       (initialization succeeds or is retried)
+initializing -> removing     (cleanup is confirmed instead)
+active       -> removing     (cleanup is confirmed)
+removing     -> removing     (cleanup is retried)
+removing     -> deleted      (every provider completes)
 ```
 
 An `initializing` record is not available to indexing or retrieval. A rerun
 of `init` for the same repository repairs missing allocations and promotes
 the record to `active`. An `active` registration cannot be reinitialized
-under another UUID.
+under another UUID. A user may instead remove an `initializing` registration
+by UUID; absent allocations are successful no-op cleanup resources.
 
 A `removing` record cannot be reactivated by `init`. The user must finish
 cleanup. Once every provider is complete, the registry removes the project and
@@ -302,7 +312,8 @@ still pending or already absent.
 
 After interactive confirmation or `--force`:
 
-1. The registry moves an active project to `removing`.
+1. The registry moves an active or initializing project to `removing`, or
+   resumes a project already in `removing`.
 2. The coordinator reconciles the current provider set into pending provider
    rows. This includes providers added by a later software version.
 3. Completed providers from an earlier attempt are skipped.

@@ -21,7 +21,7 @@ module can be reviewed, executed, and reopened independently.
 |---:|---|---|---|
 | 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Complete | `docs/plans/module-02-setup-diagnostics-implementation.md` |
-| 3 | Project registry, storage locations, and cleanup | Not planned | — |
+| 3 | Project registry, storage locations, and cleanup | Planned | `docs/plans/module-03-project-lifecycle-implementation.md` |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
 | 6 | Python parsing and structural chunks | Not planned | — |
@@ -57,6 +57,7 @@ before continuing.
 | 2026-10-01 | 2 | Treat only decoded JSON as a healthy Qdrant probe | Accept the documented 2xx plain-text `/healthz` response for the fixed Qdrant endpoint | Whole-module review found that the JSON-only adapter otherwise marked a real healthy Qdrant service unhealthy | Regression coverage and the complete local gate now pass; remote CI must evaluate the reviewed HEAD |
 | 2026-10-01 | 2 | Fake-backed acceptance plus manual commands were sufficient for the local gate | Require one separately confirmed real-machine runner covering actual model pulls and managed Qdrant startup | The user requested an end-to-end test of the delivered Modules 1 and 2 using real host services | Module 2 remains in progress until the live runner and exact pushed CI matrix pass |
 | 2026-10-01 | 2 | In progress | Complete | The real-machine runner passed on macOS and the exact pushed acceptance-runner commit passed both GitHub Actions matrix jobs | Module 3 is authorized to enter planning |
+| 2026-10-01 | 3 | Not planned | Planned | The approved project-lifecycle spec was expanded into a task-level implementation plan | Implementation awaits plan review and execution-method approval |
 
 ## Module Completion Record
 
