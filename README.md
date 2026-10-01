@@ -4,10 +4,10 @@
 coding agents. It is designed to find a small, traceable evidence set for an
 engineering task instead of placing an entire repository in a model context.
 
-The project is under active development. Modules 1 and 2 provide the Python
-package, stable CLI, platform-aware local setup, read-only diagnostics, and
-hardware-aware Qwen recommendations. Repository indexing begins in later
-modules.
+The project is under active development. Modules 1 through 3 provide the
+Python package, stable CLI, platform-aware local setup, read-only diagnostics,
+hardware-aware Qwen recommendations, and safe local project registration and
+cleanup. Repository indexing begins in later modules.
 
 ## Supported platforms
 
@@ -130,6 +130,79 @@ The user configuration is `config.toml`. The managed service definition is
 under the platform data directory. Its REST and gRPC ports bind only to
 `127.0.0.1:6333` and `127.0.0.1:6334`.
 
+## Project lifecycle
+
+Register the current Git worktree, or an explicit repository path:
+
+```bash
+uv run repo-intel init
+uv run repo-intel init /path/to/repository
+```
+
+Registration follows Git worktrees from nested, spaced, Unicode, and symlink
+alias paths. It stores a stable UUID in a global SQLite registry and never
+writes an identifier or marker into the source repository or its `.git`
+directory. Repeating `init` for the same repository returns the existing UUID
+and repairs an interrupted initialization.
+
+List registrations and inspect one by path or UUID:
+
+```bash
+uv run repo-intel projects
+uv run repo-intel status
+uv run repo-intel status /path/to/repository
+uv run repo-intel status --project-id PROJECT_UUID
+```
+
+Path and `--project-id` selectors are mutually exclusive. UUID selection keeps
+a moved or missing repository manageable. If a repository moves on the same
+machine, refresh its canonical path explicitly while preserving its UUID and
+generated allocations:
+
+```bash
+uv run repo-intel projects relocate PROJECT_UUID /new/repository/path
+```
+
+If the old path contains a different Git repository, status reports it as
+`reused`; it is never silently attached to the old registration. Use the UUID
+to inspect, relocate, or remove the original registration.
+
+Preview cleanup before approving it:
+
+```bash
+uv run repo-intel remove --project-id PROJECT_UUID --dry-run
+uv run repo-intel remove /path/to/repository --dry-run
+```
+
+The preview prints every provider, exact resource identifier, existence state,
+and action without prompting or changing state. Normal removal prints the same
+plan and asks for confirmation that defaults to no. `--force` skips only that
+prompt; it preserves target validation, provider execution, progress tracking,
+and failure exit codes. `--dry-run` and `--force` cannot be combined.
+
+```bash
+uv run repo-intel remove --project-id PROJECT_UUID
+uv run repo-intel remove --project-id PROJECT_UUID --force
+```
+
+Cleanup is provider-based and retryable. Completed providers are skipped on a
+retry, newly introduced providers are added, and the registration remains
+until every recorded provider completes. Use `--project-id` to recover cleanup
+when the source path is moved, missing, reused, or initialization stopped
+partway through. Only repo-intel-owned UUID directories are removed; source
+files, Git metadata, the global registry, and `.repo-intel.toml` are never
+cleanup targets.
+
+Project state uses these platform-native locations:
+
+| Platform | Registry | Project data | Project cache | Project logs |
+|---|---|---|---|---|
+| macOS | `~/Library/Application Support/repo-intel/data/registry.sqlite3` | `~/Library/Application Support/repo-intel/data/projects/<uuid>` | `~/Library/Caches/repo-intel/projects/<uuid>` | `~/Library/Logs/repo-intel/projects/<uuid>` |
+| Ubuntu | `~/.local/share/repo-intel/registry.sqlite3` | `~/.local/share/repo-intel/projects/<uuid>` | `~/.cache/repo-intel/projects/<uuid>` | `~/.local/state/repo-intel/log/projects/<uuid>` |
+
+Ubuntu honors `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and `XDG_STATE_HOME` in place
+of those defaults.
+
 ## Troubleshooting
 
 - If `doctor` reports a missing program, follow its macOS or Ubuntu guidance;
@@ -151,6 +224,11 @@ under the platform data directory. Its REST and gRPC ports bind only to
 uv run repo-intel --help
 uv run repo-intel setup --help
 uv run repo-intel doctor --help
+uv run repo-intel init --help
+uv run repo-intel projects --help
+uv run repo-intel projects relocate --help
+uv run repo-intel status --help
+uv run repo-intel remove --help
 uv run repo-intel version
 uv run python -m repo_intel --help
 ```

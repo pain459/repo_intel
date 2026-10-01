@@ -14,7 +14,10 @@ def test_help_lists_public_commands() -> None:
 
     assert result.exit_code == 0
     assert "Repository intelligence" in result.stdout
-    assert all(command in result.stdout for command in ("doctor", "setup", "version"))
+    assert all(
+        command in result.stdout
+        for command in ("doctor", "init", "projects", "remove", "setup", "status", "version")
+    )
 
 
 def test_version_command_prints_distribution_version() -> None:

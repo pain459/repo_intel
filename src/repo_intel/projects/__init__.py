@@ -10,6 +10,7 @@ from repo_intel.projects.cleanup import (
     DirectoryCleanupProvider,
     default_cleanup_providers,
 )
+from repo_intel.projects.composition import ProjectCommands, build_project_commands
 from repo_intel.projects.layout import project_paths, provision_project_paths, registry_path
 from repo_intel.projects.models import (
     CleanupProviderProgress,
@@ -36,6 +37,7 @@ __all__ = [
     "CleanupResult",
     "DirectoryCleanupProvider",
     "ProjectAvailability",
+    "ProjectCommands",
     "ProjectLifecycle",
     "ProjectPaths",
     "ProjectRecord",
@@ -45,6 +47,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ProjectRegistry",
     "RegistryWriteConflict",
+    "build_project_commands",
     "default_cleanup_providers",
     "project_paths",
     "provision_project_paths",
