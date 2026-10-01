@@ -25,8 +25,9 @@
 - GitHub Actions run `36864796238` passed both `Quality (macos-latest)` and
   `Quality (ubuntu-latest)`, including dependency installation, lint,
   formatting, strict typing, tests, builds, and CLI smoke checks.
-- Task 6 remains complete, but Module 1 is reopened pending both GitHub Actions
-  platform jobs on the reviewed HEAD. Module 2 remains gated.
+- GitHub Actions run `36866220648` then passed both platform jobs on reviewed
+  commit `a0ca39f`, which contains the final-review correction.
+- Task 6 and Module 1 are complete. Module 2 is authorized to enter planning.
 
 ## Global Constraints
 

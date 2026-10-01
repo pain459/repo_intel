@@ -19,8 +19,8 @@ module can be reviewed, executed, and reopened independently.
 
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
-| 1 | Project foundation and contracts | Reopened | `docs/plans/module-01-foundation-implementation.md` |
-| 2 | Setup, diagnostics, and model recommendation | Not planned | — |
+| 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
+| 2 | Setup, diagnostics, and model recommendation | Planned | `docs/plans/module-02-setup-diagnostics-implementation.md` |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
@@ -51,6 +51,8 @@ before continuing.
 | 2026-10-01 | 1 | Planned | In progress | User approved native execution on the main checkout | Module 2 remains gated until Module 1 passes both platform CI jobs |
 | 2026-10-01 | 1 | In progress | Complete | Local gate passed and GitHub Actions passed on macOS and Ubuntu | Module 2 is authorized to enter planning |
 | 2026-10-01 | 1 | Complete | Reopened | Final review restored accidentally removed ignore rules and rejected relative XDG roots | Module 2 is gated until CI passes the reviewed Module 1 HEAD |
+| 2026-10-01 | 1 | Reopened | Complete | Reviewed HEAD passed the complete GitHub Actions matrix on macOS and Ubuntu | Module 2 is authorized to enter planning |
+| 2026-10-01 | 2 | Not planned | Planned | Approved v1 design was expanded into a task-level Module 2 plan | Implementation awaits plan review |
 
 ## Module Completion Record
 
@@ -84,8 +86,8 @@ the next module authorized to enter planning.
 - Local checks: Ruff lint passed; Ruff format passed; strict MyPy passed for
   24 source files; Pytest passed 66 tests; source and wheel builds passed; Git
   whitespace validation and all three CLI smoke commands passed.
-- Cross-platform evidence: pending a GitHub Actions run for commit `2baa134` or
-  a descendant containing the same correction.
-- Status: `Reopened`.
-- Next module: Module 2 remains gated until both macOS and Ubuntu CI jobs pass
-  on the reviewed Module 1 HEAD.
+- Cross-platform evidence: [GitHub Actions run 36866220648](https://github.com/pain459/repo_intel/actions/runs/36866220648)
+  passed `Quality (ubuntu-latest)` and `Quality (macos-latest)` for reviewed
+  commit `a0ca39f`, including every workflow step.
+- Status: `Complete`.
+- Next module: Module 2 is authorized to enter planning.
