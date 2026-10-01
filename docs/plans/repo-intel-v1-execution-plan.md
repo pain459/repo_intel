@@ -21,7 +21,7 @@ module can be reviewed, executed, and reopened independently.
 |---:|---|---|---|
 | 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Complete | `docs/plans/module-02-setup-diagnostics-implementation.md` |
-| 3 | Project registry, storage locations, and cleanup | In progress | `docs/plans/module-03-project-lifecycle-implementation.md` |
+| 3 | Project registry, storage locations, and cleanup | Complete | `docs/plans/module-03-project-lifecycle-implementation.md` |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
 | 6 | Python parsing and structural chunks | Not planned | — |
@@ -59,6 +59,7 @@ before continuing.
 | 2026-10-01 | 2 | In progress | Complete | The real-machine runner passed on macOS and the exact pushed acceptance-runner commit passed both GitHub Actions matrix jobs | Module 3 is authorized to enter planning |
 | 2026-10-01 | 3 | Not planned | Planned | The approved project-lifecycle spec was expanded into a task-level implementation plan | Implementation awaits plan review and execution-method approval |
 | 2026-10-01 | 3 | Planned | In progress | User approved native execution of the reviewed Module 3 plan on the main checkout | Module 4 remains gated until the exact reviewed commit passes local acceptance and both CI matrix jobs |
+| 2026-10-01 | 3 | In progress | Complete | The complete local gate passed and exact reviewed commit `fcb6419` passed both GitHub Actions matrix jobs | Module 4 is authorized to enter planning |
 
 ## Module Completion Record
 
@@ -137,8 +138,10 @@ the next module authorized to enter planning.
   user's machine.
 - Next module: Module 3 is authorized to enter planning.
 
-### Module 3 — Local implementation checkpoint
+### Module 3 — Completion record
 
+- Commits: `508ca58`, `65601f7`, `5a8a6a3`, `417cbcc`, `ca63454`,
+  `2e182d1`, and reviewed gate commit `fcb6419`.
 - Local platform: macOS, Python 3.12.14, uv 0.12.21.
 - Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
   passed for 76 files; strict MyPy passed for 76 checked source, test, and
@@ -156,10 +159,15 @@ the next module authorized to enter planning.
   independent providers could run, and unexpected acceptance exceptions could
   bypass the redacted failure surface. The reviewed local gate has no remaining
   Critical or Important findings.
-- Status: `In progress`; the reviewed Task 7 commit still requires the
-  user-owned push and successful `Quality (macos-latest)` and
-  `Quality (ubuntu-latest)` jobs for the exact commit.
+- Cross-platform evidence: [GitHub Actions run 36883993923](https://github.com/pain459/repo_intel/actions/runs/36883993923)
+  passed `Quality (macos-latest)` and `Quality (ubuntu-latest)` for exact
+  reviewed commit `fcb64191d01e14ded929690d78651b41b1ef7a92`. Every workflow
+  step passed on both platforms, including the isolated Module 3 lifecycle
+  acceptance runner.
+- Status: `Complete`; the fresh local quality gate, whole-module review,
+  isolated real-Git acceptance, and exact-commit macOS/Ubuntu CI gate all
+  passed.
 - Known limitations: moved repositories require explicit relocation; automatic
   discovery, scanning, indexing, embeddings, Qdrant project data, and MCP are
   intentionally deferred to later modules.
-- Next module: Module 4 remains gated until Module 3 remote CI closes.
+- Next module: Module 4 is authorized to enter planning.
