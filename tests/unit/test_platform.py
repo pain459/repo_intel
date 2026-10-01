@@ -61,6 +61,25 @@ def test_ubuntu_paths_use_xdg_defaults() -> None:
     assert paths.log_dir == Path("/home/test user/.local/state/repo-intel/log")
 
 
+def test_ubuntu_paths_ignore_relative_xdg_overrides() -> None:
+    home = Path("/home/test-user")
+
+    paths = UbuntuPlatform().paths(
+        home=home,
+        environ={
+            "XDG_CONFIG_HOME": "relative/config",
+            "XDG_DATA_HOME": "relative/data",
+            "XDG_CACHE_HOME": "relative/cache",
+            "XDG_STATE_HOME": "relative/state",
+        },
+    )
+
+    assert paths.config_dir == Path("/home/test-user/.config/repo-intel")
+    assert paths.data_dir == Path("/home/test-user/.local/share/repo-intel")
+    assert paths.cache_dir == Path("/home/test-user/.cache/repo-intel")
+    assert paths.log_dir == Path("/home/test-user/.local/state/repo-intel/log")
+
+
 def test_detect_platform_selects_macos() -> None:
     platform = detect_platform(system="Darwin")
 

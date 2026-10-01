@@ -8,7 +8,11 @@ from repo_intel.platform.base import AppPaths, PlatformKind
 
 def _xdg_root(environ: Mapping[str, str], name: str, default: Path) -> Path:
     configured = environ.get(name)
-    return Path(configured) if configured else default
+    if not configured:
+        return default
+
+    candidate = Path(configured)
+    return candidate if candidate.is_absolute() else default
 
 
 class UbuntuPlatform:
