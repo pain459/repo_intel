@@ -15,7 +15,7 @@
 - Tasks 1–5 are complete in commits `3b5f4c2`, `1c03161`, `90a4672`,
   `8764caf`, and `200e1d1`.
 - Task 6 implementation and the complete local macOS gate are complete in
-  commit `1cbc3ef`.
+  commits `1cbc3ef` and `aee0165`.
 - Local evidence: Ruff lint and format checks passed, strict MyPy passed for
   24 source files, all 65 tests passed, both distributions built, and all
   three CLI smoke commands exited successfully.
