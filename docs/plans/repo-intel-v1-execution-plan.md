@@ -20,7 +20,7 @@ module can be reviewed, executed, and reopened independently.
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
 | 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
-| 2 | Setup, diagnostics, and model recommendation | Planned | `docs/plans/module-02-setup-diagnostics-implementation.md` |
+| 2 | Setup, diagnostics, and model recommendation | In progress | `docs/plans/module-02-setup-diagnostics-implementation.md` |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
@@ -53,6 +53,7 @@ before continuing.
 | 2026-10-01 | 1 | Complete | Reopened | Final review restored accidentally removed ignore rules and rejected relative XDG roots | Module 2 is gated until CI passes the reviewed Module 1 HEAD |
 | 2026-10-01 | 1 | Reopened | Complete | Reviewed HEAD passed the complete GitHub Actions matrix on macOS and Ubuntu | Module 2 is authorized to enter planning |
 | 2026-10-01 | 2 | Not planned | Planned | Approved v1 design was expanded into a task-level Module 2 plan | Implementation awaits plan review |
+| 2026-10-01 | 2 | Planned | In progress | User approved native execution of the reviewed task-level plan | Module 3 remains gated until Module 2 passes its complete local and cross-platform gate |
 
 ## Module Completion Record
 
