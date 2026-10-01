@@ -30,4 +30,3 @@ class PlatformAdapter(Protocol):
     kind: PlatformKind
 
     def paths(self, *, home: Path, environ: Mapping[str, str]) -> AppPaths: ...
-

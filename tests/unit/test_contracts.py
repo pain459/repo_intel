@@ -1,7 +1,7 @@
-from dataclasses import FrozenInstanceError
 import math
-from pathlib import Path, PurePosixPath
 from collections.abc import Callable, Sequence
+from dataclasses import FrozenInstanceError
+from pathlib import Path, PurePosixPath
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -27,7 +27,6 @@ from repo_intel.ports import (
     Retriever,
     SourceParser,
 )
-
 
 REPOSITORY_ID = UUID("12345678-1234-5678-1234-567812345678")
 SOURCE_HASH = "a" * 64
@@ -57,7 +56,7 @@ def test_domain_records_are_immutable() -> None:
     repository = RepositoryRef(repository_id=REPOSITORY_ID, root=Path("/workspace/project"))
 
     with pytest.raises(FrozenInstanceError):
-        repository.root = Path("/another/project")
+        setattr(repository, "root", Path("/another/project"))
 
 
 @pytest.mark.parametrize("root", [Path("project"), Path(".")])

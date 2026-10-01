@@ -1,5 +1,5 @@
-from importlib import metadata
 import sys
+from importlib import metadata
 
 import repo_intel
 

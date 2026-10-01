@@ -1,16 +1,15 @@
 """Merge configuration sources with explicit precedence."""
 
-from collections.abc import Mapping
 import os
-from pathlib import Path
 import tomllib
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
 from repo_intel.config.models import AppConfig
 from repo_intel.errors import ExitCode, RepoIntelError
-
 
 _ENVIRONMENT_FIELDS = {
     "REPO_INTEL_LOG_LEVEL": "log_level",
@@ -44,11 +43,7 @@ def _environment_values(environ: Mapping[str, str]) -> dict[str, str]:
             ExitCode.CONFIG,
             hint="Remove the unsupported environment variable.",
         )
-    return {
-        field: environ[name]
-        for name, field in _ENVIRONMENT_FIELDS.items()
-        if name in environ
-    }
+    return {field: environ[name] for name, field in _ENVIRONMENT_FIELDS.items() if name in environ}
 
 
 def _validation_error(error: ValidationError) -> RepoIntelError:

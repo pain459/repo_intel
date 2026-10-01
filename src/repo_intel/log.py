@@ -6,7 +6,6 @@ from typing import TextIO
 
 from repo_intel.errors import ExitCode, RepoIntelError
 
-
 _LEVELS = {
     "DEBUG": logging.DEBUG,
     "INFO": logging.INFO,

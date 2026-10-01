@@ -27,4 +27,3 @@ class UbuntuPlatform:
             cache_dir=cache_root / "repo-intel",
             log_dir=state_root / "repo-intel" / "log",
         )
-

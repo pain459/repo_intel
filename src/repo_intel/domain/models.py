@@ -1,12 +1,11 @@
 """Immutable records shared by indexing and retrieval modules."""
 
+import math
+import re
 from dataclasses import dataclass
 from enum import StrEnum
-import math
 from pathlib import Path, PurePosixPath
-import re
 from uuid import UUID
-
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -174,4 +173,3 @@ class ContextPackage:
             raise ValueError("estimated_tokens must not be negative")
         if self.estimated_tokens > self.token_budget:
             raise ValueError("estimated_tokens must not exceed token_budget")
-

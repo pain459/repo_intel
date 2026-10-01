@@ -29,4 +29,3 @@ class RepoIntelError(Exception):
         self.message = message
         self.exit_code = exit_code
         self.hint = hint
-

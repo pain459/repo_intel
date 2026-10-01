@@ -4,7 +4,6 @@ import typer
 
 from repo_intel import __version__
 
-
 app = typer.Typer(
     help="Repository intelligence for local coding agents.",
     no_args_is_help=True,

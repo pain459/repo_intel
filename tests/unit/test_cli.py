@@ -6,7 +6,6 @@ from typer.testing import CliRunner
 import repo_intel
 from repo_intel.cli.app import app
 
-
 runner = CliRunner()
 
 
@@ -35,4 +34,3 @@ def test_module_entry_point_has_help() -> None:
 
     assert result.returncode == 0
     assert "Repository intelligence" in result.stdout
-

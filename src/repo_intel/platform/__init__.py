@@ -13,4 +13,3 @@ __all__ = [
     "UbuntuPlatform",
     "detect_platform",
 ]
-

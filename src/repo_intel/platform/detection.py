@@ -1,7 +1,7 @@
 """Select the supported adapter for the current host."""
 
-from collections.abc import Mapping
 import platform as host_platform
+from collections.abc import Mapping
 from pathlib import Path
 
 from repo_intel.errors import ExitCode, RepoIntelError
@@ -22,7 +22,7 @@ def _read_os_release(path: Path = Path("/etc/os-release")) -> dict[str, str]:
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         key, value = stripped.split("=", 1)
-        release[key] = value.strip().strip('"\'')
+        release[key] = value.strip().strip("\"'")
     return release
 
 

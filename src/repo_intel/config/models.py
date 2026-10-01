@@ -22,4 +22,3 @@ class AppConfig(BaseModel):
 
     log_level: LogLevel = LogLevel.INFO
     context_token_budget: PositiveInt = 10_000
-

@@ -20,4 +20,3 @@ class MacOSPlatform:
             cache_dir=home / "Library" / "Caches" / "repo-intel",
             log_dir=home / "Library" / "Logs" / "repo-intel",
         )
-
