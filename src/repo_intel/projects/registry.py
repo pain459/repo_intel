@@ -94,8 +94,13 @@ def _create_owner_directories(path: Path) -> None:
         missing.append(candidate)
         candidate = candidate.parent
     for directory in reversed(missing):
-        directory.mkdir(mode=_OWNER_DIRECTORY_MODE)
-        directory.chmod(_OWNER_DIRECTORY_MODE)
+        try:
+            directory.mkdir(mode=_OWNER_DIRECTORY_MODE)
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
+        else:
+            directory.chmod(_OWNER_DIRECTORY_MODE)
 
 
 class ProjectRegistry:

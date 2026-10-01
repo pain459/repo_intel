@@ -28,16 +28,24 @@ def project_paths(app_paths: AppPaths, repository_id: UUID) -> ProjectPaths:
     )
 
 
-def _create_owner_directories(path: Path) -> None:
+def _create_owner_directories(path: Path) -> bool:
     missing: list[Path] = []
     candidate = path
     while not candidate.exists():
         missing.append(candidate)
         candidate = candidate.parent
 
+    target_created = False
     for directory in reversed(missing):
-        directory.mkdir(mode=_OWNER_DIRECTORY_MODE)
-        directory.chmod(_OWNER_DIRECTORY_MODE)
+        try:
+            directory.mkdir(mode=_OWNER_DIRECTORY_MODE)
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
+        else:
+            directory.chmod(_OWNER_DIRECTORY_MODE)
+            target_created = directory == path
+    return target_created
 
 
 def provision_project_paths(paths: ProjectPaths) -> tuple[Path, ...]:
@@ -45,8 +53,6 @@ def provision_project_paths(paths: ProjectPaths) -> tuple[Path, ...]:
 
     created: list[Path] = []
     for path in (paths.data_dir, paths.cache_dir, paths.log_dir):
-        leaf_missing = not path.exists()
-        _create_owner_directories(path)
-        if leaf_missing:
+        if _create_owner_directories(path):
             created.append(path)
     return tuple(created)

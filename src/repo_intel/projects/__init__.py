@@ -13,6 +13,7 @@ from repo_intel.projects.models import (
 )
 from repo_intel.projects.registry import SCHEMA_VERSION, ProjectRegistry, RegistryWriteConflict
 from repo_intel.projects.resolver import resolve_repository
+from repo_intel.projects.service import ProjectService
 
 __all__ = [
     "CleanupProviderProgress",
@@ -21,6 +22,7 @@ __all__ = [
     "ProjectLifecycle",
     "ProjectPaths",
     "ProjectRecord",
+    "ProjectService",
     "ProjectStatus",
     "RepositoryIdentity",
     "SCHEMA_VERSION",
