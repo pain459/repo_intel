@@ -48,9 +48,22 @@ before continuing.
 | Date | Module | Previous decision | Revised decision | Reason | Downstream impact |
 |---|---:|---|---|---|---|
 | 2026-10-01 | All | No task-level execution index | Adopt one living index plus one detailed plan per module | Keep the reference current without creating one unreviewable plan | Every module must link its approved detailed plan before implementation |
+| 2026-10-01 | 1 | Planned | In progress | User approved native execution on the main checkout | Module 2 remains gated until Module 1 passes both platform CI jobs |
 
 ## Module Completion Record
 
 Add one entry when a module gate closes. Include the commit, commands executed,
 platform evidence, benchmark evidence when applicable, known limitations, and
 the next module authorized to enter planning.
+
+### Module 1 — Local implementation checkpoint
+
+- Commits: `3b5f4c2`, `1c03161`, `90a4672`, `8764caf`, `200e1d1`, `1cbc3ef`
+- Local platform: macOS, Python 3.12.14, uv 0.12.21
+- Local checks: Ruff lint passed; Ruff format passed; strict MyPy passed for
+  24 source files; Pytest passed 65 tests; source and wheel builds passed;
+  console help, version, and module-entry smoke commands passed.
+- Cross-platform evidence: workflow created for `macos-latest` and
+  `ubuntu-latest`; remote jobs have not run because no push was authorized.
+- Status: `In progress`; the module gate remains open pending both CI jobs.
+- Next module: not authorized.

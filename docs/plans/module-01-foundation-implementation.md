@@ -10,6 +10,19 @@
 
 **Spec:** `docs/design/repo-intel-v1-design.md`
 
+## Execution Status
+
+- Tasks 1–5 are complete in commits `3b5f4c2`, `1c03161`, `90a4672`,
+  `8764caf`, and `200e1d1`.
+- Task 6 implementation and the complete local macOS gate are complete in
+  commit `1cbc3ef`.
+- Local evidence: Ruff lint and format checks passed, strict MyPy passed for
+  24 source files, all 65 tests passed, both distributions built, and all
+  three CLI smoke commands exited successfully.
+- The `macos-latest` and `ubuntu-latest` GitHub Actions jobs remain unverified
+  until the branch is pushed. Task 6 and Module 1 remain in progress, and
+  Module 2 is not authorized to begin.
+
 ## Global Constraints
 
 - Support Python 3.12 or newer.
