@@ -1,5 +1,15 @@
 """Project lifecycle records and platform-native storage layout."""
 
+from repo_intel.projects.cleanup import (
+    CleanupCoordinator,
+    CleanupFailure,
+    CleanupPlan,
+    CleanupProvider,
+    CleanupResource,
+    CleanupResult,
+    DirectoryCleanupProvider,
+    default_cleanup_providers,
+)
 from repo_intel.projects.layout import project_paths, provision_project_paths, registry_path
 from repo_intel.projects.models import (
     CleanupProviderProgress,
@@ -16,8 +26,15 @@ from repo_intel.projects.resolver import resolve_repository
 from repo_intel.projects.service import ProjectService
 
 __all__ = [
+    "CleanupCoordinator",
+    "CleanupFailure",
+    "CleanupPlan",
+    "CleanupProvider",
     "CleanupProviderProgress",
     "CleanupProviderState",
+    "CleanupResource",
+    "CleanupResult",
+    "DirectoryCleanupProvider",
     "ProjectAvailability",
     "ProjectLifecycle",
     "ProjectPaths",
@@ -28,6 +45,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ProjectRegistry",
     "RegistryWriteConflict",
+    "default_cleanup_providers",
     "project_paths",
     "provision_project_paths",
     "registry_path",

@@ -9,6 +9,7 @@ import pytest
 
 from repo_intel.errors import RepoIntelError
 from repo_intel.platform import AppPaths
+from repo_intel.projects.cleanup import CleanupCoordinator, default_cleanup_providers
 from repo_intel.projects.layout import provision_project_paths
 from repo_intel.projects.models import ProjectAvailability
 from repo_intel.projects.registry import ProjectRegistry
@@ -115,3 +116,40 @@ def test_two_threads_initializing_one_repository_receive_one_uuid(tmp_path: Path
 
     assert results[0].project.repository_id == results[1].project.repository_id
     assert len(service.projects()) == 1
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="Git is required")
+def test_real_cleanup_removes_only_generated_allocations(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    _git_init(repository)
+    source_file = repository / "source.py"
+    config_file = repository / ".repo-intel.toml"
+    source_file.write_text("print('keep me')\n")
+    config_file.write_text("[repo-intel]\n")
+    app_paths = _app_paths(tmp_path / "platform")
+    runner = SubprocessCommandRunner()
+    registry = ProjectRegistry(app_paths.data_dir / "registry.sqlite3")
+    service = ProjectService(
+        registry,
+        app_paths,
+        lambda path: resolve_repository(path, runner),
+        clock=lambda: datetime.now(UTC),
+        uuid_factory=uuid4,
+        provision=provision_project_paths,
+    )
+    status = service.init(repository)
+    coordinator = CleanupCoordinator(
+        registry,
+        app_paths,
+        default_cleanup_providers(),
+        clock=lambda: datetime.now(UTC),
+    )
+
+    result = coordinator.remove(status.project)
+
+    assert result.removed_registration is True
+    assert source_file.read_text() == "print('keep me')\n"
+    assert config_file.read_text() == "[repo-intel]\n"
+    assert not status.paths.data_dir.exists()
+    assert not status.paths.cache_dir.exists()
+    assert not status.paths.log_dir.exists()
