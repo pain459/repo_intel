@@ -137,8 +137,7 @@ class ProjectRegistry:
     @staticmethod
     def _has_user_schema(connection: sqlite3.Connection) -> bool:
         row = connection.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
         ).fetchone()
         return row is not None
 
@@ -363,9 +362,7 @@ class ProjectRegistry:
                 "UPDATE projects SET lifecycle = ?, updated_at = ? WHERE repository_id = ?",
                 (ProjectLifecycle.ACTIVE.value, _timestamp(now), str(repository_id)),
             )
-            activated = self._select_project(
-                connection, "repository_id = ?", (str(repository_id),)
-            )
+            activated = self._select_project(connection, "repository_id = ?", (str(repository_id),))
             assert activated is not None
             return activated
 
@@ -404,9 +401,7 @@ class ProjectRegistry:
                     str(repository_id),
                 ),
             )
-            relocated = self._select_project(
-                connection, "repository_id = ?", (str(repository_id),)
-            )
+            relocated = self._select_project(connection, "repository_id = ?", (str(repository_id),))
             assert relocated is not None
             return relocated
 
@@ -470,9 +465,7 @@ class ProjectRegistry:
                 (ProjectLifecycle.REMOVING.value, _timestamp(now), str(repository_id)),
             )
             self._reconcile_in_transaction(connection, repository_id, provider_names, now)
-            removing = self._select_project(
-                connection, "repository_id = ?", (str(repository_id),)
-            )
+            removing = self._select_project(connection, "repository_id = ?", (str(repository_id),))
             assert removing is not None
             return removing
 

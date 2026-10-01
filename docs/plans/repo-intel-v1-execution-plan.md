@@ -21,7 +21,7 @@ module can be reviewed, executed, and reopened independently.
 |---:|---|---|---|
 | 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Complete | `docs/plans/module-02-setup-diagnostics-implementation.md` |
-| 3 | Project registry, storage locations, and cleanup | Planned | `docs/plans/module-03-project-lifecycle-implementation.md` |
+| 3 | Project registry, storage locations, and cleanup | In progress | `docs/plans/module-03-project-lifecycle-implementation.md` |
 | 4 | Repository scanner and file classification | Not planned | — |
 | 5 | SQLite metadata and index state | Not planned | — |
 | 6 | Python parsing and structural chunks | Not planned | — |
@@ -58,6 +58,7 @@ before continuing.
 | 2026-10-01 | 2 | Fake-backed acceptance plus manual commands were sufficient for the local gate | Require one separately confirmed real-machine runner covering actual model pulls and managed Qdrant startup | The user requested an end-to-end test of the delivered Modules 1 and 2 using real host services | Module 2 remains in progress until the live runner and exact pushed CI matrix pass |
 | 2026-10-01 | 2 | In progress | Complete | The real-machine runner passed on macOS and the exact pushed acceptance-runner commit passed both GitHub Actions matrix jobs | Module 3 is authorized to enter planning |
 | 2026-10-01 | 3 | Not planned | Planned | The approved project-lifecycle spec was expanded into a task-level implementation plan | Implementation awaits plan review and execution-method approval |
+| 2026-10-01 | 3 | Planned | In progress | User approved native execution of the reviewed Module 3 plan on the main checkout | Module 4 remains gated until the exact reviewed commit passes local acceptance and both CI matrix jobs |
 
 ## Module Completion Record
 
@@ -135,3 +136,30 @@ the next module authorized to enter planning.
   Ollama models and managed Qdrant container/data intentionally remain on the
   user's machine.
 - Next module: Module 3 is authorized to enter planning.
+
+### Module 3 — Local implementation checkpoint
+
+- Local platform: macOS, Python 3.12.14, uv 0.12.21.
+- Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
+  passed for 76 files; strict MyPy passed for 76 checked source, test, and
+  script files; Pytest passed 259 tests; source and wheel builds passed; all
+  Module 3 CLI help surfaces, the module entry point, and Git whitespace
+  validation passed.
+- Acceptance: `uv run python scripts/acceptance_module_03.py` passed with real
+  temporary Git repositories and isolated application roots. It covered
+  idempotent init, independent registrations, listing/status, explicit
+  relocation, path reuse, exact dry run, symlink refusal, independent-provider
+  continuation, durable retry, final registry deletion, and preservation of
+  source, `.repo-intel.toml`, replacement, sentinel, and unrelated state.
+- Review: self-review of the complete Module 3 range found and corrected two
+  Important issues: unsafe targets initially failed during planning before
+  independent providers could run, and unexpected acceptance exceptions could
+  bypass the redacted failure surface. The reviewed local gate has no remaining
+  Critical or Important findings.
+- Status: `In progress`; the reviewed Task 7 commit still requires the
+  user-owned push and successful `Quality (macos-latest)` and
+  `Quality (ubuntu-latest)` jobs for the exact commit.
+- Known limitations: moved repositories require explicit relocation; automatic
+  discovery, scanning, indexing, embeddings, Qdrant project data, and MCP are
+  intentionally deferred to later modules.
+- Next module: Module 4 remains gated until Module 3 remote CI closes.

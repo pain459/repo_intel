@@ -96,8 +96,7 @@ def test_first_initialization_promotes_active_and_repeat_returns_same_uuid(
     assert repeated.project.repository_id == FIRST_ID
     assert first.paths == project_paths(app_paths, FIRST_ID)
     assert all(
-        path.is_dir()
-        for path in (first.paths.data_dir, first.paths.cache_dir, first.paths.log_dir)
+        path.is_dir() for path in (first.paths.data_dir, first.paths.cache_dir, first.paths.log_dir)
     )
 
 

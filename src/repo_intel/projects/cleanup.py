@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from repo_intel.errors import ExitCode, RepoIntelError
@@ -102,7 +102,11 @@ class DirectoryCleanupProvider:
         self.name = name
         self._select_path = select_path
 
-    def _target(self, project: ProjectRecord, paths: ProjectPaths) -> tuple[Path, bool]:
+    def _target(
+        self,
+        project: ProjectRecord,
+        paths: ProjectPaths,
+    ) -> tuple[Path, Literal["absent", "directory", "unsafe"]]:
         target = self._select_path(paths)
         expected_leaf = str(project.repository_id)
         if target.name != expected_leaf or target.parent.name != "projects":
@@ -118,47 +122,53 @@ class DirectoryCleanupProvider:
         try:
             parent_metadata = parent.lstat()
         except FileNotFoundError:
-            return target, False
-        except OSError as error:
-            raise _unsafe_target(self.name) from error
+            return target, "absent"
+        except OSError:
+            return target, "unsafe"
         if not stat.S_ISDIR(parent_metadata.st_mode) or parent.is_symlink():
-            raise _unsafe_target(self.name)
+            return target, "unsafe"
         try:
             if parent.resolve(strict=True) != parent:
-                raise _unsafe_target(self.name)
-        except OSError as error:
-            raise _unsafe_target(self.name) from error
+                return target, "unsafe"
+        except OSError:
+            return target, "unsafe"
 
         try:
             metadata = target.lstat()
         except FileNotFoundError:
-            return target, False
-        except OSError as error:
-            raise _unsafe_target(self.name) from error
+            return target, "absent"
+        except OSError:
+            return target, "unsafe"
         if not stat.S_ISDIR(metadata.st_mode) or target.is_symlink():
-            raise _unsafe_target(self.name)
-        return target, True
+            return target, "unsafe"
+        return target, "directory"
 
     def plan(
         self,
         project: ProjectRecord,
         paths: ProjectPaths,
     ) -> tuple[CleanupResource, ...]:
-        target, exists = self._target(project, paths)
+        target, state = self._target(project, paths)
         return (
             CleanupResource(
                 provider_name=self.name,
                 kind="directory",
                 identifier=str(target),
-                exists=exists,
-                action="remove" if exists else "already absent",
+                exists=state != "absent",
+                action={
+                    "absent": "already absent",
+                    "directory": "remove",
+                    "unsafe": "refuse unsafe target",
+                }[state],
             ),
         )
 
     def cleanup(self, project: ProjectRecord, paths: ProjectPaths) -> None:
-        target, exists = self._target(project, paths)
-        if not exists:
+        target, state = self._target(project, paths)
+        if state == "absent":
             return
+        if state == "unsafe":
+            raise _unsafe_target(self.name)
         try:
             shutil.rmtree(target)
         except OSError as error:

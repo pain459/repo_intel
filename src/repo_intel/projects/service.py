@@ -45,10 +45,7 @@ class ProjectService:
 
     @staticmethod
     def _same_identity(project: ProjectRecord, identity: RepositoryIdentity) -> bool:
-        return (
-            project.git_dir_device == identity.device
-            and project.git_dir_inode == identity.inode
-        )
+        return project.git_dir_device == identity.device and project.git_dir_inode == identity.inode
 
     def _status(self, project: ProjectRecord) -> ProjectStatus:
         try:

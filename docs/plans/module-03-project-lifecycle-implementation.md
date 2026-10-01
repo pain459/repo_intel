@@ -10,6 +10,10 @@
 
 **Spec:** docs/superpowers/specs/2026-10-01-module-03-project-lifecycle-design.md
 
+**Execution status:** In progress. Tasks 1–6 and Task 7 local implementation
+are complete; the exact reviewed Task 7 commit still requires the user-owned
+push and successful macOS/Ubuntu GitHub Actions matrix before Module 3 closes.
+
 ## Global Constraints
 
 - Support macOS and Ubuntu only; preserve the existing unsupported-platform error.
@@ -68,7 +72,7 @@
 - Consumes: repo_intel.platform.AppPaths and the existing RepoIntelError/ExitCode contract.
 - Produces: ProjectLifecycle, ProjectAvailability, CleanupProviderState, RepositoryIdentity, ProjectRecord, ProjectPaths, CleanupProviderProgress, ProjectStatus, registry_path(), project_paths(), and provision_project_paths().
 
-- [ ] **Step 1: Write failing model and layout tests**
+- [x] **Step 1: Write failing model and layout tests**
 
 Add tests named:
 
@@ -88,13 +92,13 @@ assert paths.log_dir == app_paths.log_dir / "projects" / str(repository_id)
 assert registry_path(app_paths) == app_paths.data_dir / "registry.sqlite3"
 ~~~
 
-- [ ] **Step 2: Run the focused tests and verify the red state**
+- [x] **Step 2: Run the focused tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_project_layout.py -q
 
 Expected: collection fails because repo_intel.projects does not exist.
 
-- [ ] **Step 3: Add the immutable records and pure path mapping**
+- [x] **Step 3: Add the immutable records and pure path mapping**
 
 Define:
 
@@ -168,7 +172,7 @@ directories, apply mode 0o700 to directories created by this operation, and
 return only UUID leaf paths that were newly created. Never create anything in
 the repository root.
 
-- [ ] **Step 4: Run focused tests, lint, and typing**
+- [x] **Step 4: Run focused tests, lint, and typing**
 
 Run:
 
@@ -180,7 +184,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel/pro
 
 Expected: all commands exit zero.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ~~~bash
 git add src/repo_intel/projects tests/unit/test_project_layout.py
@@ -198,7 +202,7 @@ git commit -m "feat: define project lifecycle records"
 - Consumes: RepositoryIdentity and repo_intel.runtime.CommandRunner.
 - Produces: resolve_repository(path: Path, runner: CommandRunner, *, timeout_seconds: float = 5.0) -> RepositoryIdentity.
 
-- [ ] **Step 1: Write failing resolver tests**
+- [x] **Step 1: Write failing resolver tests**
 
 Use a recording fake CommandRunner and add tests for:
 
@@ -222,13 +226,13 @@ assert (identity.device, identity.inode) == (
 assert runner.which_calls == ["git"]
 ~~~
 
-- [ ] **Step 2: Run the resolver tests and verify the red state**
+- [x] **Step 2: Run the resolver tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_repository_resolver.py -q
 
 Expected: import fails because resolver.py does not exist.
 
-- [ ] **Step 3: Implement bounded Git resolution**
+- [x] **Step 3: Implement bounded Git resolution**
 
 Implement resolve_repository() using shell-free Git invocations for
 --is-inside-work-tree, --show-toplevel, and --absolute-git-dir. Require exactly
@@ -240,7 +244,7 @@ Map missing Git to DEPENDENCY and invalid paths, malformed output, command
 failure, timeout, or stat failure to secret-safe DATA errors with actionable
 hints.
 
-- [ ] **Step 4: Run focused and runtime regression checks**
+- [x] **Step 4: Run focused and runtime regression checks**
 
 Run:
 
@@ -252,7 +256,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel/pro
 
 Expected: all commands exit zero.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ~~~bash
 git add src/repo_intel/projects tests/unit/test_repository_resolver.py
@@ -328,7 +332,7 @@ def delete_if_cleanup_complete(
 ) -> bool: ...
 ~~~
 
-- [ ] **Step 1: Write failing schema and registry tests**
+- [x] **Step 1: Write failing schema and registry tests**
 
 Cover:
 
@@ -360,13 +364,13 @@ assert [(item.provider_name, item.state.value) for item in progress] == [
 ]
 ~~~
 
-- [ ] **Step 2: Run registry tests and verify the red state**
+- [x] **Step 2: Run registry tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_project_registry.py -q
 
 Expected: import fails because registry.py does not exist.
 
-- [ ] **Step 3: Implement schema and short transactions**
+- [x] **Step 3: Implement schema and short transactions**
 
 Create the projects and cleanup_provider_state tables exactly as specified.
 Store UUIDs and absolute paths as canonical strings, device/inode as SQLite
@@ -385,7 +389,7 @@ RegistryWriteConflict distinguishes path and Git-identity unique conflicts so
 Task 4 can reread and classify concurrent initialization. Translate all other
 sqlite failures to DATA without exposing SQL or stored values.
 
-- [ ] **Step 4: Run focused tests, then all persistence-adjacent tests**
+- [x] **Step 4: Run focused tests, then all persistence-adjacent tests**
 
 Run:
 
@@ -397,7 +401,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel/pro
 
 Expected: all commands exit zero.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ~~~bash
 git add src/repo_intel/projects tests/unit/test_project_registry.py
@@ -458,7 +462,7 @@ def __init__(
 Production composition supplies aware-UTC, uuid4, and
 provision_project_paths callables; tests inject deterministic values.
 
-- [ ] **Step 1: Write failing lifecycle-service tests**
+- [x] **Step 1: Write failing lifecycle-service tests**
 
 Cover:
 
@@ -479,7 +483,7 @@ Add real-Git integration coverage for nested paths, symlink aliases,
 same-filesystem moves, explicit relocation, missing paths, and replacement
 repositories at the registered path.
 
-- [ ] **Step 2: Run service and integration tests and verify the red state**
+- [x] **Step 2: Run service and integration tests and verify the red state**
 
 Run:
 
@@ -490,7 +494,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/integratio
 
 Expected: imports fail because service.py does not exist.
 
-- [ ] **Step 3: Implement lifecycle orchestration**
+- [x] **Step 3: Implement lifecycle orchestration**
 
 For init(), call registry.initialize(), then classify path and identity
 matches before creating a UUID. On RegistryWriteConflict, reread once and
@@ -509,7 +513,7 @@ does not require the repository path to exist. Relocation requires active,
 checks both destination uniqueness dimensions, and changes no project
 allocation.
 
-- [ ] **Step 4: Run lifecycle, resolver, registry, lint, and typing checks**
+- [x] **Step 4: Run lifecycle, resolver, registry, lint, and typing checks**
 
 Run:
 
@@ -521,7 +525,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel/pro
 
 Expected: all commands exit zero.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ~~~bash
 git add src/repo_intel/projects tests/unit/test_project_service.py tests/integration/test_project_lifecycle.py
@@ -587,7 +591,7 @@ removed_registration flag, and an exit_code derived without discarding safe
 summaries: EXTERNAL_SERVICE when any provider reports it, otherwise DATA when
 any provider fails, otherwise SUCCESS.
 
-- [ ] **Step 1: Write failing cleanup tests**
+- [x] **Step 1: Write failing cleanup tests**
 
 Cover:
 
@@ -617,13 +621,13 @@ assert second.removed_registration is True
 assert registry.get_by_id(project.repository_id) is None
 ~~~
 
-- [ ] **Step 2: Run cleanup tests and verify the red state**
+- [x] **Step 2: Run cleanup tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_project_cleanup.py -q
 
 Expected: import fails because cleanup.py does not exist.
 
-- [ ] **Step 3: Implement cleanup planning and orchestration**
+- [x] **Step 3: Implement cleanup planning and orchestration**
 
 Create three DirectoryCleanupProvider instances named cache, data, and logs;
 sort all providers by stable name. Validate the expected projects parent,
@@ -638,7 +642,7 @@ delete_if_cleanup_complete() only after the full attempt. Convert only
 structured RepoIntelError metadata into CleanupFailure; replace unknown
 exceptions with a fixed secret-safe DATA summary.
 
-- [ ] **Step 4: Run cleanup and lifecycle regression checks**
+- [x] **Step 4: Run cleanup and lifecycle regression checks**
 
 Run:
 
@@ -650,7 +654,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel/pro
 
 Expected: all commands exit zero.
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ~~~bash
 git add src/repo_intel/projects tests/unit/test_project_cleanup.py tests/integration/test_project_lifecycle.py
@@ -683,7 +687,7 @@ class ProjectCommands:
 def build_project_commands() -> ProjectCommands: ...
 ~~~
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Pin help and behavior for:
 
@@ -704,13 +708,13 @@ Pin help and behavior for:
 - path reuse and missing-path guidance pointing to --project-id; and
 - typed errors omitting secret sentinel values.
 
-- [ ] **Step 2: Run CLI tests and verify the red state**
+- [x] **Step 2: Run CLI tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_cli_projects.py tests/unit/test_cli.py -q
 
 Expected: CLI assertions fail because the project commands are absent.
 
-- [ ] **Step 3: Add production composition and thin Typer commands**
+- [x] **Step 3: Add production composition and thin Typer commands**
 
 build_project_commands() resolves native AppPaths from Path.home() and
 os.environ, constructs the registry without opening or creating it, creates
@@ -726,7 +730,7 @@ defaults omitted paths to Path.cwd(), renders stable records, confirms removal
 with default false, prints Removal cancelled on no/EOF, and exits with the
 typed or aggregated result code.
 
-- [ ] **Step 4: Document exact CLI behavior and run command-level checks**
+- [x] **Step 4: Document exact CLI behavior and run command-level checks**
 
 Document platform registry/allocation paths, every command form, path reuse,
 relocation, dry-run, confirmation, --force semantics, partial cleanup retry,
@@ -749,7 +753,7 @@ env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run mypy src/repo_intel tes
 
 Expected: all commands exit zero and help exposes every public contract.
 
-- [ ] **Step 5: Commit Task 6**
+- [x] **Step 5: Commit Task 6**
 
 ~~~bash
 git add src/repo_intel/projects src/repo_intel/cli README.md tests/unit/test_cli.py tests/unit/test_cli_projects.py
@@ -772,7 +776,7 @@ git commit -m "feat: expose project lifecycle commands"
 - Consumes: the complete Module 3 public CLI plus real temporary Git repositories.
 - Produces: run_project_acceptance(argv: Sequence[str] | None = None) -> int and a safe one-command acceptance entry point.
 
-- [ ] **Step 1: Write failing acceptance-contract tests**
+- [x] **Step 1: Write failing acceptance-contract tests**
 
 Test that the runner:
 
@@ -786,13 +790,13 @@ Test that the runner:
 - reports the stage that failed without echoing captured secret sentinels; and
 - exits zero only after the registry forgets the removed project.
 
-- [ ] **Step 2: Run acceptance tests and verify the red state**
+- [x] **Step 2: Run acceptance tests and verify the red state**
 
 Run: env UV_CACHE_DIR=/private/tmp/repo-intel-uv-cache uv run pytest tests/unit/test_project_acceptance_runner.py -q
 
 Expected: import fails because project_acceptance.py does not exist.
 
-- [ ] **Step 3: Implement the isolated real-Git acceptance workflow**
+- [x] **Step 3: Implement the isolated real-Git acceptance workflow**
 
 Within one TemporaryDirectory, set HOME and every XDG root to isolated
 subdirectories, create two real Git repositories with spaces and Unicode,
@@ -819,7 +823,7 @@ The wrapper only imports run_project_acceptance() and exits with its result.
 It requires no model download, Docker action, Qdrant service, or real user
 registry.
 
-- [ ] **Step 4: Add docs and both-platform CI acceptance**
+- [x] **Step 4: Add docs and both-platform CI acceptance**
 
 Document:
 
@@ -831,7 +835,7 @@ Add that command as a dedicated GitHub Actions step after tests on
 macos-latest and ubuntu-latest. Extend CLI smoke checks for all Module 3 help
 surfaces.
 
-- [ ] **Step 5: Run the complete local Module 3 gate**
+- [x] **Step 5: Run the complete local Module 3 gate**
 
 Run:
 
@@ -856,7 +860,7 @@ git diff --check
 Expected: every command exits zero; the acceptance runner reports MODULE 3
 ACCEPTANCE PASSED and leaves no state outside its temporary root.
 
-- [ ] **Step 6: Review the complete Module 3 diff and commit the local gate**
+- [x] **Step 6: Review the complete Module 3 diff and commit the local gate**
 
 Review from the Module 3 planning commit through HEAD for Critical and
 Important correctness, safety, contract, and test gaps. Fix every such finding

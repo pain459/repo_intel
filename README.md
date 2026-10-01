@@ -264,6 +264,21 @@ remain installed for normal use. See the
 [`Modules 1–2 real-machine acceptance guide`](docs/testing/modules-01-02-real-acceptance.md)
 for prerequisites, validations, retained resources, and result codes.
 
+## Isolated Module 3 acceptance test
+
+Run the complete project registration, relocation, path-reuse, cleanup-failure,
+and retry workflow with real temporary Git repositories:
+
+```bash
+uv run python scripts/acceptance_module_03.py
+```
+
+This non-interactive runner isolates HOME and all XDG roots beneath one
+temporary directory. It neither uses the real user registry nor contacts
+Ollama, Docker, or Qdrant. See the
+[`Module 3 project lifecycle acceptance guide`](docs/testing/module-03-project-lifecycle-acceptance.md)
+for the exact safety and preservation checks.
+
 ## Design and execution references
 
 - [`PROJECT_PLAN.md`](PROJECT_PLAN.md) describes the long-term product vision.

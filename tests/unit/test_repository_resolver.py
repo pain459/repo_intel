@@ -90,8 +90,7 @@ def test_resolves_worktree_inputs_to_canonical_root_and_git_identity(
     ]
     assert all(call[0][0] == "/usr/bin/git" for call in runner.run_calls)
     assert all(
-        call[0][1:3] == ("-C", str(input_path.resolve(strict=True)))
-        for call in runner.run_calls
+        call[0][1:3] == ("-C", str(input_path.resolve(strict=True))) for call in runner.run_calls
     )
     assert all(call[1] == 5.0 for call in runner.run_calls)
 

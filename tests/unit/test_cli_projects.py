@@ -11,7 +11,13 @@ import repo_intel.projects.composition as composition
 from repo_intel.cli.app import app
 from repo_intel.errors import ExitCode, RepoIntelError
 from repo_intel.platform import AppPaths, PlatformKind
-from repo_intel.projects.cleanup import CleanupFailure, CleanupPlan, CleanupResource, CleanupResult
+from repo_intel.projects.cleanup import (
+    CleanupCoordinator,
+    CleanupFailure,
+    CleanupPlan,
+    CleanupResource,
+    CleanupResult,
+)
 from repo_intel.projects.composition import ProjectCommands
 from repo_intel.projects.models import (
     CleanupProviderProgress,
@@ -22,6 +28,7 @@ from repo_intel.projects.models import (
     ProjectRecord,
     ProjectStatus,
 )
+from repo_intel.projects.service import ProjectService
 
 runner = CliRunner()
 NOW = datetime(2026, 10, 1, 11, tzinfo=UTC)
@@ -139,8 +146,8 @@ def _install_commands(
     selected_service = service or FakeService()
     cleanup = FakeCleanup(selected_service.value)
     commands = ProjectCommands(
-        service=cast("object", selected_service),  # type: ignore[arg-type]
-        cleanup=cast("object", cleanup),  # type: ignore[arg-type]
+        service=cast("ProjectService", selected_service),
+        cleanup=cast("CleanupCoordinator", cleanup),
     )
     monkeypatch.setattr(cli_projects, "build_project_commands", lambda: commands)
     return selected_service, cleanup

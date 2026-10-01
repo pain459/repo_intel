@@ -44,6 +44,9 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Check project lifecycle acceptance
+        run: uv run python scripts/acceptance_module_03.py
+
       - name: Check setup and doctor workflows
         run: >-
           uv run pytest
@@ -62,6 +65,21 @@ jobs:
 
       - name: Check doctor help
         run: uv run repo-intel doctor --help
+
+      - name: Check project init help
+        run: uv run repo-intel init --help
+
+      - name: Check project listing help
+        run: uv run repo-intel projects --help
+
+      - name: Check project relocation help
+        run: uv run repo-intel projects relocate --help
+
+      - name: Check project status help
+        run: uv run repo-intel status --help
+
+      - name: Check project removal help
+        run: uv run repo-intel remove --help
 
       - name: Check console version
         run: uv run repo-intel version

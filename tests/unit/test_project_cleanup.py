@@ -212,9 +212,11 @@ def test_directory_cleanup_rejects_symlink_without_touching_external_sentinel(
     paths.data_dir.symlink_to(external, target_is_directory=True)
     provider = DirectoryCleanupProvider("data", lambda selected: selected.data_dir)
 
+    plan = provider.plan(project, paths)
     with pytest.raises(RepoIntelError):
         provider.cleanup(project, paths)
 
+    assert plan[0].action == "refuse unsafe target"
     assert sentinel.read_text() == "keep"
     assert paths.data_dir.is_symlink()
 

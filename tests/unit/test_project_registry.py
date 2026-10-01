@@ -63,8 +63,7 @@ def test_initial_schema_version_constraints_and_owner_permissions(tmp_path: Path
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'projects'"
         ).fetchone()[0]
         cleanup_sql = connection.execute(
-            "SELECT sql FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'cleanup_provider_state'"
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cleanup_provider_state'"
         ).fetchone()[0]
         foreign_keys = connection.execute(
             "PRAGMA foreign_key_list(cleanup_provider_state)"
