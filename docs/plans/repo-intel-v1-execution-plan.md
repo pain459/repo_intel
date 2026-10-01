@@ -19,7 +19,7 @@ module can be reviewed, executed, and reopened independently.
 
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
-| 1 | Project foundation and contracts | Planned | `docs/plans/module-01-foundation-implementation.md` |
+| 1 | Project foundation and contracts | In progress | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Not planned | — |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
