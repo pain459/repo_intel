@@ -11,6 +11,7 @@ from repo_intel.projects.models import (
     ProjectStatus,
     RepositoryIdentity,
 )
+from repo_intel.projects.resolver import resolve_repository
 
 __all__ = [
     "CleanupProviderProgress",
@@ -24,4 +25,5 @@ __all__ = [
     "project_paths",
     "provision_project_paths",
     "registry_path",
+    "resolve_repository",
 ]
