@@ -19,7 +19,7 @@ module can be reviewed, executed, and reopened independently.
 
 | Module | Name | Status | Detailed plan |
 |---:|---|---|---|
-| 1 | Project foundation and contracts | In progress | `docs/plans/module-01-foundation-implementation.md` |
+| 1 | Project foundation and contracts | Complete | `docs/plans/module-01-foundation-implementation.md` |
 | 2 | Setup, diagnostics, and model recommendation | Not planned | — |
 | 3 | Project registry, storage locations, and cleanup | Not planned | — |
 | 4 | Repository scanner and file classification | Not planned | — |
@@ -49,6 +49,7 @@ before continuing.
 |---|---:|---|---|---|---|
 | 2026-10-01 | All | No task-level execution index | Adopt one living index plus one detailed plan per module | Keep the reference current without creating one unreviewable plan | Every module must link its approved detailed plan before implementation |
 | 2026-10-01 | 1 | Planned | In progress | User approved native execution on the main checkout | Module 2 remains gated until Module 1 passes both platform CI jobs |
+| 2026-10-01 | 1 | In progress | Complete | Local gate passed and GitHub Actions passed on macOS and Ubuntu | Module 2 is authorized to enter planning |
 
 ## Module Completion Record
 
@@ -64,7 +65,10 @@ the next module authorized to enter planning.
 - Local checks: Ruff lint passed; Ruff format passed; strict MyPy passed for
   24 source files; Pytest passed 65 tests; source and wheel builds passed;
   console help, version, and module-entry smoke commands passed.
-- Cross-platform evidence: workflow created for `macos-latest` and
-  `ubuntu-latest`; remote jobs have not run because no push was authorized.
-- Status: `In progress`; the module gate remains open pending both CI jobs.
-- Next module: not authorized.
+- Cross-platform evidence: [GitHub Actions run 36864796238](https://github.com/pain459/repo_intel/actions/runs/36864796238)
+  passed `Quality (ubuntu-latest)` and `Quality (macos-latest)` with every
+  workflow step successful.
+- Status: `Complete`.
+- Known limitation: Module 1 defines foundation contracts only; setup,
+  diagnostics, repository registration, and indexing are intentionally absent.
+- Next module: Module 2 is authorized to enter planning.
