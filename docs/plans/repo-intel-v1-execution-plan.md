@@ -54,6 +54,7 @@ before continuing.
 | 2026-10-01 | 1 | Reopened | Complete | Reviewed HEAD passed the complete GitHub Actions matrix on macOS and Ubuntu | Module 2 is authorized to enter planning |
 | 2026-10-01 | 2 | Not planned | Planned | Approved v1 design was expanded into a task-level Module 2 plan | Implementation awaits plan review |
 | 2026-10-01 | 2 | Planned | In progress | User approved native execution of the reviewed task-level plan | Module 3 remains gated until Module 2 passes its complete local and cross-platform gate |
+| 2026-10-01 | 2 | Treat only decoded JSON as a healthy Qdrant probe | Accept the documented 2xx plain-text `/healthz` response for the fixed Qdrant endpoint | Whole-module review found that the JSON-only adapter otherwise marked a real healthy Qdrant service unhealthy | Regression coverage and the complete local gate now pass; remote CI must evaluate the reviewed HEAD |
 
 ## Module Completion Record
 
@@ -93,11 +94,10 @@ the next module authorized to enter planning.
 - Status: `Complete`.
 - Next module: Module 2 is authorized to enter planning.
 
-### Module 2 — Local implementation checkpoint
+### Module 2 — Reviewed local implementation checkpoint
 
 - Commits: `c081528`, `0a7dd0b`, `b49de0e`, `ab7c030`, `92fd2ac`, and
-  `e47333e`; Task 7 documentation and CI gate changes are included in the next
-  local commit.
+  `e47333e`; Task 7 is `8377a67`; whole-module review correction is `fd1dd31`.
 - Local platform: macOS, Python 3.12.14, uv 0.12.21.
 - Local checks: locked dependency sync passed; Ruff lint passed; Ruff format
   passed; strict MyPy passed for 54 checked files; Pytest passed 165 tests;
@@ -107,8 +107,13 @@ the next module authorized to enter planning.
   and Ubuntu behavior without contacting local services, pulling models, or
   starting Docker. The GitHub Actions matrix runs those checks on both hosted
   platforms.
-- Status: `In progress` pending whole-module review and GitHub Actions results
-  for the exact pushed Task 7 commit on macOS and Ubuntu.
+- Review: self-review of the complete Module 2 range found and corrected one
+  Important Qdrant health-contract defect. A read-only production `doctor`
+  smoke on macOS also returned categorized, secret-safe findings and the
+  expected conservative hardware fallback under sandbox-restricted `sysctl`.
+- Status: `In progress`; no Critical or Important review finding remains, but
+  GitHub Actions must pass for the exact pushed reviewed HEAD on macOS and
+  Ubuntu before the gate closes.
 - Known limitations: system package installation remains guidance-only; Qwen
   is an optional recommendation; CI intentionally substitutes deterministic
   fakes for destructive or machine-specific service actions.

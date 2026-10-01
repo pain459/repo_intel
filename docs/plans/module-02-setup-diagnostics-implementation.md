@@ -17,8 +17,14 @@
 - Task 7's local acceptance gate passed on macOS with Python 3.12.14 and uv
   0.12.21: Ruff lint and format, strict MyPy, 165 tests, source and wheel
   builds, all CLI smoke commands, and Git whitespace validation passed.
-- Module 2 remains `In progress` pending whole-module review and GitHub Actions
-  results for the exact pushed Task 7 commit on macOS and Ubuntu.
+- Whole-module self-review completed across `02ff765..8377a67`. It found one
+  Important integration defect: Qdrant's successful `/healthz` response is
+  plain text, while the shared bounded client intentionally accepts JSON only.
+  Commit `fd1dd31` now treats only a 2xx plain-text result from that fixed
+  Qdrant endpoint as healthy; the red/green regression and full gate passed.
+- No Critical or Important review finding remains. Module 2 stays `In progress`
+  pending GitHub Actions results for the exact pushed reviewed HEAD on macOS
+  and Ubuntu.
 
 ## Global Constraints
 
