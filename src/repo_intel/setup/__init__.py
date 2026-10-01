@@ -6,6 +6,9 @@ from repo_intel.setup.models import (
     HardwareProfile,
     ModelRecommendation,
     PreparedSetup,
+    SetupAction,
+    SetupActionKind,
+    SetupActionResult,
     SetupPaths,
 )
 from repo_intel.setup.recommendation import recommend_qwen
@@ -15,6 +18,9 @@ __all__ = [
     "HardwareProfile",
     "ModelRecommendation",
     "PreparedSetup",
+    "SetupAction",
+    "SetupActionKind",
+    "SetupActionResult",
     "SetupPaths",
     "inspect_hardware",
     "recommend_qwen",
