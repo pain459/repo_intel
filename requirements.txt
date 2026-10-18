@@ -1,0 +1,19 @@
+# repo_intel runtime dependencies
+# Managed from pyproject.toml; this file is pip-installable for dev convenience.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+pydantic>=2.10,<3
+pydantic-settings>=2.6,<3
+sqlalchemy[asyncio]>=2.0,<3
+alembic>=1.14,<2
+psycopg[binary,adapter]>=3.2,<4
+httpx>=0.28,<1
+typer>=0.14,<1
+rich>=13.9,<14
+structlog>=24.4,<25
+
+# Dev / test dependencies
+pytest>=8.3,<9
+pytest-asyncio>=0.25,<1
+pytest-cov>=6,<7
+ruff>=0.8,<1

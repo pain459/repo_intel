@@ -1,0 +1,33 @@
+# repo_intel — Dockerignore for clean builds
+
+# Version control
+.git
+.gitignore
+
+# Environment / secrets
+.env
+.envrc
+*.env
+
+# Python artefacts
+__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# IDE / editors
+.vscode
+.idea
+.DS_Store
+
+# Documentation
+*.md
+docs
+
+# Plans, notes, test fixtures
+repo_intel_implementation_plan.md
+tests/fixtures

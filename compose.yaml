@@ -1,0 +1,57 @@
+# repo_intel — Compose for development and production
+# Usage: HOST_REPO_ROOT=/path/to/your/repo docker compose up -d --build
+
+# ------------------------------------------------------------------
+# API (FastAPI + health)
+# ------------------------------------------------------------------
+services:
+  api:
+    build: .
+    command: ["repo-intel", "serve"]
+    env_file: .env
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ${HOST_REPO_ROOT:-.}/:/workspace:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8765/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# ------------------------------------------------------------------
+# Worker (background jobs — Phase 2+)
+# ------------------------------------------------------------------
+  worker:
+    build: .
+    command: ["repo-intel", "worker"]
+    env_file: .env
+    volumes:
+      - ${HOST_REPO_ROOT:-.}/:/workspace:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ------------------------------------------------------------------
+# PostgreSQL + pgvector
+# ------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: repo_intel
+      POSTGRES_USER: repo_intel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repo_intel -d repo_intel"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
