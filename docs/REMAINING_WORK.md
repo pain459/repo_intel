@@ -1,7 +1,7 @@
 # Remaining Work — v1.0 Gap Audit
 
 **Date:** 2026-10-19  
-**Status:** Phase 8 complete. 137 tests passing, lint clean.
+**Status:** Phase 9 complete. 143 tests passing, lint clean.
 
 This document audits the implementation plan against what actually exists in the codebase.
 
@@ -16,13 +16,13 @@ This document audits the implementation plan against what actually exists in the
 | MCP Tools         | 1    | 0       | 1       |
 | Security / Governance | 5 | 0     | 0       |
 | Observability     | 1    | 0       | 1       |
-| CLI / Installer   | 5    | 0       | 1       |
-| Retrieval Quality | 3    | 0       | 2       |
-| **Total**         | **24** | **0** | **7**   |
+| CLI / Installer   | 6    | 0       | 1       |
+| Retrieval Quality | 4    | 0       | 1       |
+| **Total**         | **26** | **0** | **5**   |
 
 ---
 
-## What Changed In Phases 7-8
+## What Changed In Phases 7-9
 
 | # | Item | Status | Details |
 |---|------|--------|---------|
@@ -40,6 +40,8 @@ This document audits the implementation plan against what actually exists in the
 | 12 | Structured JSON logging | **DONE** | `log_format=json`, `JsonFormatter` emits JSON lines |
 | 13 | Prompt-injection defense | **DONE** | `prompt_guard.py` in search pipeline, leet normalization |
 | 14 | Resource limits | **DONE** | `compose.yaml` deploy.resources.limits on all services |
+| 15 | Symbol-neighbor expansion | **DONE** | `_symbol_candidates()` in hybrid_search, 4-way RRF |
+| 16 | MCP configure CLI | **DONE** | `repo-intel mcp configure` subcommand |
 
 ---
 
@@ -110,11 +112,11 @@ No metrics library installed. No metrics endpoints. Planned `observability/metri
 
 ## 6. CLI / Installer Gaps
 
-### 6.1 Missing CLI commands — **PARTIAL**
+### 6.1 Missing CLI commands — **DONE** ✅
 Plan §7 CLI UX:
-- `repo-intel backup` — ✅ now exists
-- `repo-intel restore` — ✅ now exists
-- `repo-intel mcp configure --client opencode` — ✗ doesn't exist
+- `repo-intel backup` — ✅
+- `repo-intel restore` — ✅
+- `repo-intel mcp configure --client opencode` — ✅ Phase 9
 
 ### 6.2 Installer gaps — **DONE** ✅
 `scripts/install.sh`: MCP connectivity test added. `scripts/uninstall.sh` added.
@@ -126,9 +128,11 @@ Plan §7 CLI UX:
 
 ## 7. Retrieval Quality Gaps
 
-### 7.1 Symbol-neighbor expansion — **MISSING**
-Plan §6 pipeline: *"symbol-neighbor expansion (bounded)"*.
-`SearchMethod` type includes `"symbol"` but no search code produces symbol-neighbor results. Dead code.
+### 7.1 Symbol-neighbor expansion — **DONE** ✅
+`_symbol_candidates()` activates when the query looks like an identifier
+(`^[a-zA-Z_]\w{0,127}$`), returning chunks whose `symbol_name` contains
+the query. Bounded to `_CANDIDATE_LIMIT`. Hybrid search now uses 4-way
+reciprocal rank fusion (exact + lexical + semantic + symbol).
 
 ### 7.2 Stale evidence labeling — **DONE** ✅
 Search results include `is_stale` flag. API response includes stale count warnings.
@@ -174,7 +178,7 @@ From plan §14, cross-referenced:
 - [x] **Unsupported/stale/conflicting evidence labeled** — stale chunks filtered at DB level ✅
 - [x] **Security tests cover path traversal and secrets** (Phase 6)
 - [x] **Log credential redaction** — `CredentialFilter` strips credentials from log output ✅
-- [ ] **Prompt-injection defense tested** — not implemented (defer to v1.1)
+- [x] **Prompt-injection defense tested** — `prompt_guard.py` + 15 tests ✅
 - [ ] **Evaluation report** — benchmark suite missing (defer to v1.1)
 - [x] **User guide, troubleshooting guide** — docs done
 - [x] **Backup/restore** — scripts + CLI commands working ✅
@@ -182,6 +186,8 @@ From plan §14, cross-referenced:
 - [x] **Structured JSON logging** — `log_format=json` emits JSON log lines ✅
 - [x] **Prompt-injection defense** — `prompt_guard.py` strips adversarial patterns from search queries ✅
 - [x] **Resource limits** — compose services have CPU/memory constraints ✅
+- [x] **Symbol-neighbor expansion** — 4-way RRF (exact + lexical + semantic + symbol) ✅
+- [x] **MCP configure CLI** — `repo-intel mcp configure` generates client config ✅
 
 ---
 
@@ -189,7 +195,6 @@ From plan §14, cross-referenced:
 
 Items that can be **deferred beyond v1.0 MVP** (non-goals or optional):
 - Prometheus metrics (observability is nice-to-have, logging + retrieval events exist)
-- Symbol-neighbor expansion (plan says "bounded", can be v1.1)
 - `symbol_edges` table + `repo_dependencies` tool (v1.1, requires AST analysis)
 - Benchmark suite + evaluation docs (v1.1)
 - OpenCode lifecycle hooks / compaction (Phase 5, deferred)
@@ -205,3 +210,5 @@ Items that should be **done for v1.0**:
 - [x] Structured JSON logging
 - [x] Prompt-injection defense
 - [x] Resource limits on compose services
+- [x] Symbol-neighbor expansion (bounded, identifier-matching)
+- [x] MCP configure CLI (`repo-intel mcp configure`)
