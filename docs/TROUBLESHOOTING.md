@@ -1,385 +1,314 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-Common issues and how to resolve them.
+Common issues, debugging steps, and emergency recovery procedures.
+
+---
+
+## Quick Diagnostics
+
+Run these first when something isn't working:
+
+```bash
+# Overall system health
+docker compose exec api repo-intel doctor
+
+# Container status
+docker compose ps
+
+# Service health endpoints
+curl http://localhost:8765/health/live
+curl http://localhost:8765/health/ready
+
+# Recent logs
+docker compose logs --tail=50 api
+docker compose logs --tail=50 worker
+docker compose logs --tail=20 postgres
+```
+
+---
 
 ## Container Issues
 
 ### Containers Won't Start
 
 ```bash
-# Check what's failing
+# Check which service fails
 docker compose ps
-docker compose logs
+docker compose logs <service_name>
 
-# Check port conflict
+# Port conflict
 lsof -i :8765
 
-# Check disk space
+# Disk space full (Docker)
 df -h /var/lib/docker
+docker system df
 ```
 
-### PostgreSQL Volume Lock
+### API Crashes on Startup
 
-If postgres fails with "FATAL: lock file exists":
+Common causes:
 
+1. **Missing `.env`** → `cp .env.example .env`, fill in required values
+2. **Bad `DATABASE_URL`** → password must match `POSTGRES_PASSWORD`
+3. **Postgres not ready** → wait for health check, `docker compose ps` shows healthy
+4. **Ollama unreachable** → check `OLLAMA_BASE_URL` in `.env`
+
+Check logs:
 ```bash
-docker compose down -v  # ⚠️ wipes all data
-docker compose up -d --build
-docker compose exec api alembic upgrade head
-```
-
-**Warning:** `-v` destroys the PostgreSQL volume. Only use after backing up.
-
-### API Container Crashes on Startup
-
-```bash
-# Check logs for the error
 docker compose logs api | tail -50
-
-# Common causes:
-# 1. Missing .env file → cp .env.example .env
-# 2. Bad DATABASE_URL → check .env
-# 3. Postgres not ready → wait for health check
 ```
 
-### "MCP server could not be mounted" Warning
+### PostgreSQL Lock File
 
-This means `fastmcp` is not installed. Rebuild:
+If postgres fails with `FATAL: lock file exists`:
 
 ```bash
+docker compose down -v   # ⚠️ wipes all data
 docker compose up -d --build
-```
-
-Verify in logs:
-```
-MCP server mounted at /mcp
-```
-
-## Database Issues
-
-### Alembic Migration Errors
-
-```bash
-# Check current migration
-docker compose exec api alembic current
-
-# Re-apply migrations
 docker compose exec api alembic upgrade head
 ```
 
-### "relation does not exist" Errors
+Only use `-v` after backing up or if the data is expendable.
 
-After a migration, tables may not exist yet:
+---
 
-```bash
-docker compose exec api alembic upgrade head
-```
+## Indexing Problems
 
-### Connection Refused to PostgreSQL
-
-```bash
-# Check postgres is running
-docker compose ps postgres
-
-# Check postgres health
-docker compose logs postgres | tail -20
-
-# Test connection manually
-docker compose exec api python -c "
-from repo_intel.db.session import get_engine
-print(get_engine())
-"
-```
-
-## Ollama / Embedding Issues
-
-### "Ollama not reachable" in doctor
-
-```bash
-# Check Ollama is running
-curl http://192.168.68.62:11434/api/tags
-
-# Check network connectivity
-ping -c 2 192.168.68.62
-
-# Check Ollama model is loaded
-curl http://192.168.68.62:11434/api/pull -d '{"name": "nomic-embed-text"}'
-```
-
-### Search Returns Few Results
-
-```bash
-# Check if repos are actually indexed with embeddings
-docker compose exec postgres psql -U repo_intel repo_intel -c "
-SELECT r.name,
-       count(DISTINCT c.id) AS chunks,
-       count(DISTINCT c.id) FILTER (WHERE c.embedding IS NOT NULL) AS with_embeddings
-FROM repositories r
-LEFT JOIN chunks c ON c.repository_id = r.id
-GROUP BY r.name;
-"
-```
-
-If `with_embeddings` is 0, trigger re-indexing:
-
-```bash
-docker compose exec api repo-intel index
-```
-
-## MCP Endpoint Issues
-
-### "Session ID missing" Error
-
-The MCP endpoint uses session-based Streamable HTTP. Each client needs to:
-
-1. Call `initialize` first
-2. Use the `Mcp-Session-Id` header in subsequent requests
-
-OpenCode handles this automatically. If testing manually:
-
-```bash
-# Step 1: Initialize
-RESP=$(curl -s -D- http://localhost:8765/mcp/ \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream, */*" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
-       "params":{"protocolVersion":"2024-11-05","capabilities":{},
-                 "clientInfo":{"name":"test","version":"1.0"}}}')
-
-SESSION=$(echo "$RESP" | grep -i "Mcp-Session-Id" | awk '{print $2}' | tr -d '\r')
-
-# Step 2: Use session
-curl http://localhost:8765/mcp/ \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream, */*" \
-  -H "Mcp-Session-Id: $SESSION" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
-```
-
-### OpenCode Doesn't Discover Tools
-
-1. Check `opencode.jsonc` exists and points to correct URL:
-   ```jsonc
-   {
-     "mcp": {
-       "servers": {
-         "repo_intel": {
-           "type": "remote",
-           "url": "http://localhost:8765/mcp/"
-         }
-       }
-     }
-   }
-   ```
-
-2. Verify the MCP endpoint is up:
-   ```bash
-   curl -sf http://localhost:8765/health/live
-   ```
-
-3. Check OpenCode logs / MCP connection status
-
-## Indexing Issues
-
-### Worker Not Processing Jobs
+### Repo Shows as `pending` or `stale`
 
 ```bash
 # Check worker is running
 docker compose ps worker
+docker compose logs worker | tail -30
 
-# Check for pending jobs
-docker compose exec postgres psql -U repo_intel repo_intel -c "
-SELECT id, repository_id, job_type, status, created_at
-FROM index_jobs
-WHERE status IN ('pending', 'running')
-ORDER BY created_at DESC
-LIMIT 5;
-"
+# Manual index
+docker compose exec api repo-intel index --repository-id <uuid>
 
-# Restart worker
-docker compose restart worker
+# Check the repo path is accessible inside the container
+docker compose exec api ls -la /workspace/
 ```
 
-### Indexing a New Repo Shows 0 Chunks
+### "Repository path not found"
 
-The repo needs to be registered first, then indexed:
+The path in `--path` must exist inside the Docker container. Host paths are mounted via `compose.yaml` volumes. Verify:
 
 ```bash
-# 1. Register
-docker compose exec api repo-intel repo add /path/to/repo
-
-# 2. Trigger index
-docker compose exec api repo-intel index
-
-# 3. Wait for worker (~30s-2min depending on repo size)
-docker compose exec api repo-intel status
+docker compose exec api ls /workspace/
+docker compose exec api ls /repos/
 ```
 
-### High Memory Usage During Indexing
+### Worker Crashes (SQLAlchemy greenlet error)
 
-Large repos (>10k files) may consume significant RAM during embedding. Increase container memory limits in `compose.yaml`:
-
-```yaml
-services:
-  worker:
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-```
-
-## Monitoring Issues
-
-### "Where are the dashboards?"
-
-The Docker Compose stack includes Prometheus and Grafana:
-
-- **Prometheus**: http://127.0.0.1:9090 (scrapes `/metrics` every 15s, retains 7 days)
-- **Grafana**: http://127.0.0.1:3000 (default login `admin`/`admin`)
-
-The "repo_intel Dashboard" loads automatically with panels for service health,
-search latency (p50/p95/p99), indexing throughput, and GC statistics.
-
-### Prometheus isn't scraping metrics
-
-Check target health inside the Prometheus container:
+This was fixed in v1.0. If it reappears, rebuild:
 
 ```bash
-docker compose exec prometheus wget -q -O - http://localhost:9090/api/v1/targets
+docker compose up -d --build
 ```
 
-Look for the `repo_intel` target. If `"health":"DOWN"`, check that the API
-container is healthy and reachable from the Prometheus container.
-
-### "Where are the Prometheus metrics?" (external scraper)
-
-If you want to scrape repo_intel metrics from an external Prometheus instance
-(not the included one):
-
-```yaml
-# prometheus.yaml
-scrape_configs:
-  - job_name: "repo_intel"
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["your-host:8765"]
-    metrics_path: "/metrics"
-```
-
-Custom metrics: `repo_intel_search_requests_total`, `repo_intel_search_latency_seconds`,
-`repo_intel_index_chunks_total`. Standard Python metrics are also included.
-
-### "Worker shows no tick count"
-
-The worker is healthy even without ticks if there are no pending jobs:
+### Index Seems Stuck
 
 ```bash
-# Check for pending jobs
-docker compose exec postgres psql -U repo_intel repo_intel -c \
-  "SELECT count(*) FROM index_jobs WHERE status='pending';"
-# 0 = worker is idle (healthy)
+# Force re-index
+docker compose exec api repo-intel index --repository-id <uuid> --force
+
+# Check for large files (MAX_FILE_BYTES default 1MB)
+find /path/to/repo -size +1M -type f
 ```
-
-### "API logs show 'marked stale' but no compaction occurred"
-
-That's normal. The AutoCheckpointScheduler runs every 15 minutes and marks old
-checkpoints stale. This is preventive maintenance, not an error.
 
 ---
 
-## Performance Issues
+## Search Issues
 
-### Slow Search Queries (>5 seconds)
+### Zero Results
 
 ```bash
-# Check vector index exists
-docker compose exec postgres psql -U repo_intel repo_intel -c "
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'chunks';
-"
+# 1. Is the repo indexed?
+docker compose exec api repo-intel status
 
-# If missing, recreate indexes
-docker compose exec api alembic upgrade head
+# 2. Check chunk count in DB
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*) FROM index_chunks;"
+
+# 3. Try a simpler query
+docker compose exec api repo-intel search --query "import"
+
+# 4. Check Ollama is responding (semantic search requires it)
+curl http://localhost:8765/health/ready
 ```
 
-### Slow Embedding Generation
+### Slow Queries
 
-The bottleneck is the Ollama endpoint. Check:
-- Ollama server load (`htop` on 192.168.68.62)
-- Network latency (`ping 192.168.68.62`)
-- Embedding batch size (increase `EMBEDDING_BATCH_SIZE` in .env)
-
-## Emergency Procedures
-
-### Complete Stack Reset
+Check Grafana dashboard at `http://localhost:3000` → Search Performance section. Look at the latency histogram. P95 > 2s warrants investigation:
 
 ```bash
-# 1. Backup database
-docker compose exec postgres pg_dump -U repo_intel repo_intel > backup.sql
+# Check embedding dimension (should be 768 for nomic-embed-text)
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT vector_dims FROM index_chunks LIMIT 1;"
 
-# 2. Stop everything
-docker compose down -v
+# Check index counts
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT repository_id, count(*) FROM index_chunks GROUP BY repository_id;"
+```
 
-# 3. Clean Docker images
-docker image prune -f
+---
 
-# 4. Restart fresh
+## MCP / OpenCode Issues
+
+### Tools Not Appearing in OpenCode
+
+1. Verify MCP server is reachable:
+   ```bash
+   curl http://localhost:8765/mcp/ -X POST -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","method":"initialize","id":1}'
+   ```
+2. Check OpenCode config (`opencode.jsonc`) points to correct URL
+3. Rebuild containers: `docker compose up -d --build`
+
+### "MCP server could not be mounted"
+
+`fastmcp` package not installed. Rebuild:
+
+```bash
 docker compose up -d --build
-docker compose exec api alembic upgrade head
-
-# 5. Restore if needed
-cat backup.sql | docker compose exec -T postgres psql -U repo_intel repo_intel
+docker compose logs api | grep -i fastmcp
 ```
 
-### Recover from Corrupted Volume
+### Tool Calls Time Out
+
+Check if the worker is consuming all resources:
 
 ```bash
-# 1. Stop containers
+docker stats --no-stream
+```
+
+If memory is maxed out, increase limits in `compose.yaml` or reduce `EMBEDDING_BATCH_SIZE` in `.env`.
+
+---
+
+## Database Issues
+
+### Connection Refused from API
+
+```bash
+# Check postgres is healthy
+docker compose ps postgres
+
+# Test connection from inside the api container
+docker compose exec api python -c "
+from repo_intel.db.session import async_session
+import asyncio
+asyncio.run(async_session().execute('SELECT 1'))
+"
+```
+
+### Migration Conflicts
+
+```bash
+# Check current revision
+docker compose exec api alembic current
+
+# Upgrade to latest
+docker compose exec api alembic upgrade head
+
+# If migrations are conflicting, check history
+docker compose exec api alembic history
+```
+
+### Corrupt Data / Recovery
+
+```bash
+# Export before any destructive operation
+docker compose exec api repo-intel backup --destination /tmp/backup.sql
+
+# Restore from backup
+docker compose exec api repo-intel restore --source /tmp/backup.sql
+```
+
+---
+
+## Monitoring Issues
+
+### Grafana Shows "No Data"
+
+1. **Prometheus not scraping**: Check Prometheus targets at `http://localhost:9090/targets`. The `api` target should be `UP`.
+2. **Not enough time**: Reduce scrape interval in `monitoring/prometheus.yaml` (default 10s) and generate some traffic.
+3. **Dashboard not provisioned**: Check Grafana logs: `docker compose logs grafana | tail -20`
+
+### Prometheus Missing Metrics
+
+```bash
+# Verify metrics endpoint works
+curl http://localhost:8765/metrics | head -20
+
+# From inside the container (if host networking fails on macOS)
+docker compose exec api curl -s http://127.0.0.1:8765/metrics | head -20
+```
+
+---
+
+## Emergency Recovery
+
+### Full Stack Reset
+
+When everything else fails:
+
+```bash
+# Stop and remove containers
 docker compose down
 
-# 2. Inspect volume
-docker volume inspect repo_intel_pgdata
+# Remove volumes (⚠️ destroys all indexed data)
+docker volume rm repo_intel_pgdata repo_intel_promdata repo_intel_grafanadata 2>/dev/null || true
 
-# 3. Remove corrupted volume
-docker volume rm repo_intel_pgdata
-
-# 4. Start fresh (data will be re-indexed)
+# Rebuild and start fresh
 docker compose up -d --build
+
+# Run migrations
 docker compose exec api alembic upgrade head
 
-# 5. Re-register and re-index all repos
-docker compose exec api repo-intel repo add /repos/agent-memory
-docker compose exec api repo-intel repo add /repos/rea
-docker compose exec api repo-intel index
+# Re-register repos and re-index
+docker compose exec api repo-intel repo add --name "my-project" --path /workspace/my-project --language python
 ```
 
-### Quick Health Checklist
+### Container Stuck in Restart Loop
 
 ```bash
-# 1. Containers running
-docker compose ps
+# Force stop
+docker compose stop api worker
 
-# 2. Health checks passing
-curl http://localhost:8765/health/ready
-
-# 3. Diagnostics
-docker compose exec api repo-intel doctor
-
-# 4. Database accessible
-docker compose exec postgres pg_isready -U repo_intel
-
-# 5. Ollama reachable
-curl http://192.168.68.62:11434/api/tags
-
-# 6. MCP endpoint works
-curl -X POST http://localhost:8765/mcp/ \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream, */*" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
-       "params":{"protocolVersion":"2024-11-05","capabilities":{},
-                 "clientInfo":{"name":"test","version":"1.0"}}}' \
-  --max-time 5 | grep -q "repo_intel" && echo "MCP OK" || echo "MCP FAIL"
+# Remove and recreate
+docker compose rm -f api worker
+docker compose up -d api worker
 ```
+
+### Out of Disk Space
+
+```bash
+# Check Docker disk usage
+docker system df
+
+# Prune unused images and volumes
+docker system prune -a --volumes   # ⚠️ aggressive, removes stopped containers and dangling images
+
+# Check PostgreSQL volume size
+docker volume inspect repo_intel_pgdata
+```
+
+### Kill Stale Processes
+
+If something leaves behind processes:
+
+```bash
+# Find stale repo-intel processes
+ps aux | grep repo-intel | grep -v grep
+
+# Kill if stuck
+kill -9 <pid>
+```
+
+---
+
+## Getting Help
+
+If none of the above resolves your issue:
+
+1. Collect diagnostics: `docker compose exec api repo-intel doctor`
+2. Save logs: `docker compose logs > /tmp/repo-intel-logs.txt`
+3. Check GitHub issues: [repo_intel issues](https://github.com/your-org/repo_intel/issues)
+4. File a new issue with the diagnostics output and relevant log excerpts
