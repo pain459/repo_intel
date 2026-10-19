@@ -38,8 +38,10 @@ def create_app() -> FastAPI:
 
     # --- Register routers ---
     from repo_intel.api.health import health_router  # noqa: PLC0415
+    from repo_intel.api.repositories import router as repo_router  # noqa: PLC0415
 
     app.include_router(health_router, prefix="/health", tags=["health"])
+    app.include_router(repo_router)
 
     return app
 

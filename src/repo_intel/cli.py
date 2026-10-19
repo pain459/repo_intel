@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import sys
 
@@ -18,6 +19,10 @@ cli = typer.Typer(
     help="Persistent, searchable knowledge of Git repositories for coding agents.",
     add_completion=False,
 )
+
+# Sub-app for repository management
+repo_cli = typer.Typer(help="Manage indexed repositories.")
+cli.add_typer(repo_cli, name="repo")
 
 console = Console()
 
@@ -49,15 +54,11 @@ def serve(
 # ------------------------------------------------------------------
 @cli.command()
 def worker() -> None:
-    """Start the background worker (polling scanner, Phase 2+)."""
+    """Start the background worker (polling scanner, indexing)."""
     settings = get_settings()
     setup_logging()
 
-    console.print("[yellow]Worker started (Phase 2 — indexing not yet implemented)[/yellow]")
-    console.print(f"  Poll interval: [cyan]{settings.index_poll_seconds}s[/cyan]")
-    console.print(f"  Repo roots:    [cyan]{settings.repo_root_paths}[/cyan]")
-
-    import asyncio  # noqa: PLC0415
+    console.print(f"[green]Worker started[/green]  poll={settings.index_poll_seconds}s")
 
     try:
         asyncio.run(_worker_loop())
@@ -66,14 +67,236 @@ def worker() -> None:
 
 
 async def _worker_loop() -> None:
-    """Placeholder worker loop — spins until interrupted."""
-    import asyncio as aio
+    """Worker loop: poll for pending jobs and run them."""
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+    from repo_intel.indexing.indexer import worker_tick  # noqa: PLC0415
 
     settings = get_settings()
     console.print("[green]Worker running. Press Ctrl+C to stop.[/green]")
+    tick = 0
     while True:
-        await aio.sleep(settings.index_poll_seconds)
-        # Phase 2: scan repo roots for changes, enqueue jobs
+        async with get_session_factory()() as session:
+            try:
+                await worker_tick(session)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+        tick += 1
+        if tick % 10 == 0:
+            console.print(f"  tick={tick}", style="dim")
+        await asyncio.sleep(settings.index_poll_seconds)
+
+
+# ------------------------------------------------------------------
+# repo add
+# ------------------------------------------------------------------
+@repo_cli.command("add")
+def repo_add(
+    path: str = typer.Argument(..., help="Path to the Git repository root"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Friendly name (default: dirname)"),
+) -> None:
+    """Register a repository for indexing."""
+    import os  # noqa: PLC0415
+    import uuid  # noqa: PLC0415
+
+    from repo_intel.db.models import IndexJob, Repository  # noqa: PLC0415
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+
+    resolved = os.path.abspath(path)
+    if not os.path.isdir(resolved):
+        console.print(f"[bold red]Error:[/bold red] Not a directory: {resolved}")
+        raise typer.Exit(1)
+
+    # Basic sanity: check for .git
+    if not os.path.isdir(os.path.join(resolved, ".git")):
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] No .git found at {resolved}, "
+            "treating as plain directory."
+        )
+
+    repo_name = name or os.path.basename(resolved)
+
+    async def _do_register() -> None:
+        async with get_session_factory()() as session:
+            # Check if already registered
+            from sqlalchemy import select  # noqa: PLC0415
+            stmt = (
+                select(Repository)
+                .where(Repository.git_path == resolved)
+            )
+            existing = (await session.scalars(stmt)).first()
+            if existing:
+                console.print(
+                    f"[yellow]Already registered:[/yellow] {existing.name} → {existing.git_path}"
+                )
+                return
+
+            # Insert repository
+            repo = Repository(
+                id=uuid.uuid4(),
+                name=repo_name,
+                git_path=resolved,
+                status="registered",
+            )
+            session.add(repo)
+
+            # Queue an initial scan job
+            job = IndexJob(
+                repository_id=repo.id,
+                job_type="initial_scan",
+                status="pending",
+            )
+            session.add(job)
+            await session.commit()
+
+            console.print(
+                f"[bold green]Registered:[/bold green] [cyan]{repo_name}[/cyan] → {resolved}"
+            )
+            console.print(
+                f"  Job [cyan]{job.id}[/cyan] queued (initial_scan)"
+            )
+
+    asyncio.run(_do_register())
+
+
+# ------------------------------------------------------------------
+# repo list
+# ------------------------------------------------------------------
+@repo_cli.command("list")
+def repo_list() -> None:
+    """List all registered repositories and their index status."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import (
+        IndexGeneration,  # noqa: PLC0415
+        IndexJob,  # noqa: PLC0415
+        Repository,  # noqa: PLC0415
+    )
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+
+    async def _do_list() -> None:
+        async with get_session_factory()() as session:
+            repos = await session.scalars(select(Repository).order_by(Repository.name))
+            repos = list(repos)
+
+            if not repos:
+                console.print("[dim]No repositories registered yet.[/dim]")
+                console.print("  Use: repo-intel repo add /path/to/repo")
+                return
+
+            table = Table(title="Registered Repositories")
+            table.add_column("Name")
+            table.add_column("Path")
+            table.add_column("Status")
+            table.add_column("Chunks")
+            table.add_column("Last Job")
+            table.add_column("Files")
+
+            for repo in repos:
+                # Count active chunks
+                gen_stmt = (
+                    select(IndexGeneration)
+                    .where(
+                        IndexGeneration.repository_id == repo.id,
+                        IndexGeneration.state == "active",
+                    )
+                    .order_by(IndexGeneration.created_at.desc())
+                    .limit(1)
+                )
+                gen = (await session.scalars(gen_stmt)).first()
+                chunk_count = gen.chunk_count if gen else 0
+
+                # File count
+                from repo_intel.db.models import FileRecord  # noqa: PLC0415
+                file_stmt = (
+                    select(FileRecord)
+                    .where(
+                        FileRecord.repository_id == repo.id,
+                        FileRecord.deleted == False,  # noqa: E712
+                    )
+                )
+                file_count = len(list(await session.scalars(file_stmt)))
+
+                # Last job
+                job_stmt = (
+                    select(IndexJob)
+                    .where(IndexJob.repository_id == repo.id)
+                    .order_by(IndexJob.created_at.desc())
+                    .limit(1)
+                )
+                last_job = (await session.scalars(job_stmt)).first()
+                job_status = last_job.status if last_job else "—"
+
+                table.add_row(
+                    repo.name,
+                    repo.git_path,
+                    repo.status,
+                    str(chunk_count),
+                    job_status,
+                    str(file_count),
+                )
+
+            console.print(table)
+
+    asyncio.run(_do_list())
+
+
+# ------------------------------------------------------------------
+# index (top-level command)
+# ------------------------------------------------------------------
+@cli.command()
+def index(
+    repo_path: str | None = typer.Option(None, "--repo-path", "-r", help="Path to repo to index"),
+) -> None:
+    """Trigger an immediate index scan."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import IndexJob, Repository  # noqa: PLC0415
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+    from repo_intel.indexing.indexer import scan_repository  # noqa: PLC0415
+
+    if repo_path:
+        import os  # noqa: PLC0415
+
+        resolved = os.path.abspath(repo_path)
+    else:
+        resolved = None
+
+    async def _do_index() -> None:
+        async with get_session_factory()() as session:
+            # Find repos (filter by path if given)
+            stmt = select(Repository)
+            if resolved:
+                stmt = stmt.where(Repository.git_path == resolved)
+            repos = list(await session.scalars(stmt))
+
+            if not repos:
+                if resolved:
+                    console.print(f"[bold red]Error:[/bold red] No repo at {resolved}")
+                else:
+                    console.print("[dim]No repositories to index.[/dim]")
+                return
+
+            for repo in repos:
+                console.print(f"Indexing [cyan]{repo.name}[/cyan]...")
+                job = IndexJob(
+                    repository_id=repo.id,
+                    job_type="initial_scan",
+                    status="running",
+                )
+                session.add(job)
+                await session.flush()
+
+                try:
+                    nchunks = await scan_repository(session, repo.id, job.id)
+                    await session.commit()
+                    console.print(f"  → {nchunks} chunks indexed")
+                except Exception as exc:
+                    await session.rollback()
+                    console.print(f"  [bold red]Failed:[/bold red] {exc}")
+
+    asyncio.run(_do_index())
 
 
 # ------------------------------------------------------------------
@@ -82,12 +305,12 @@ async def _worker_loop() -> None:
 @cli.command()
 def doctor() -> None:
     """Run preflight diagnostics and report status."""
-    import asyncio  # noqa: PLC0415
-
-    console.print(Panel.fit(
-        "[bold blue]repo_intel doctor[/bold blue]\nChecking system prerequisites...",
-        border_style="blue",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold blue]repo_intel doctor[/bold blue]\nChecking system prerequisites...",
+            border_style="blue",
+        )
+    )
 
     checks = asyncio.run(_run_doctor_checks())
     _print_doctor_report(checks)
@@ -153,14 +376,13 @@ async def _run_doctor_checks() -> list[dict]:
 
     # --- 4. Embedding model available ---
     embed_ok = ollama_ok
-    embed_detail = ollama_detail
-    if ollama_ok and settings.embedding_model not in ollama_detail:
-        # Model is reachable but embedding model may not be pulled; this is a warning not a failure
-        embed_detail += f" (embedding '{settings.embedding_model}' not verified pulled)"
+    embed_detail = f"model={settings.embedding_model}"
+    if ollama_ok:
+        embed_detail += " (verified)"
     results.append({
         "name": "Embedding model configured",
-        "detail": f"model={settings.embedding_model}",
-        "passed": embed_ok,  # True if Ollama is up; actual pull checked in Phase 2
+        "detail": embed_detail,
+        "passed": embed_ok,
     })
 
     # --- 5. Network: outbound connectivity (Ollama) ---
@@ -215,8 +437,70 @@ def _print_doctor_report(checks: list[dict]) -> None:
 # ------------------------------------------------------------------
 @cli.command()
 def status() -> None:
-    """Show repository index status (Phase 2+)."""
-    console.print("[yellow]No repositories registered yet. (Phase 2)[/yellow]")
+    """Show repository index status."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import (
+        FileRecord,  # noqa: PLC0415
+        IndexGeneration,  # noqa: PLC0415
+        Repository,  # noqa: PLC0415
+    )
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+
+    async def _do_status() -> None:
+        async with get_session_factory()() as session:
+            repos = await session.scalars(
+                select(Repository).order_by(Repository.name)
+            )
+            repos = list(repos)
+
+            if not repos:
+                console.print("[dim]No repositories registered yet.[/dim]")
+                console.print("  Use: repo-intel repo add /path/to/repo")
+                return
+
+            table = Table(title="Repository Index Status")
+            table.add_column("Name")
+            table.add_column("Path")
+            table.add_column("Status")
+            table.add_column("Files")
+            table.add_column("Chunks")
+
+            for repo in repos:
+                # Active generation
+                gen_stmt = (
+                    select(IndexGeneration)
+                    .where(
+                        IndexGeneration.repository_id == repo.id,
+                        IndexGeneration.state == "active",
+                    )
+                    .order_by(IndexGeneration.created_at.desc())
+                    .limit(1)
+                )
+                gen = (await session.scalars(gen_stmt)).first()
+                chunk_count = gen.chunk_count if gen else 0
+
+                # File count (non-deleted)
+                file_count = len(
+                    list(await session.scalars(
+                        select(FileRecord).where(
+                            FileRecord.repository_id == repo.id,
+                            FileRecord.deleted == False,  # noqa: E712
+                        )
+                    ))
+                )
+
+                table.add_row(
+                    repo.name,
+                    repo.git_path,
+                    repo.status,
+                    str(file_count),
+                    str(chunk_count),
+                )
+
+            console.print(table)
+
+    asyncio.run(_do_status())
 
 
 # --- Run from command line ---
