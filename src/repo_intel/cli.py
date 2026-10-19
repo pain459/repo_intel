@@ -433,6 +433,81 @@ def _print_doctor_report(checks: list[dict]) -> None:
 
 
 # ------------------------------------------------------------------
+# search
+# ------------------------------------------------------------------
+@cli.command()
+def search(
+    query: str = typer.Argument(..., help="Search query text"),
+    repo_path: str | None = typer.Option(
+        None, "--repo-path", "-r", help="Scope to a specific repository path"
+    ),
+    limit: int = typer.Option(10, "--limit", "-n", help="Maximum results", min=1, max=100),
+) -> None:
+    """Search indexed repositories (hybrid: exact + FTS + vector)."""
+    from rich.markdown import Markdown as RichMarkdown  # noqa: PLC0415
+
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+    from repo_intel.retrieval.search import hybrid_search  # noqa: PLC0415
+    from repo_intel.retrieval.types import SearchRequest  # noqa: PLC0415
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Repository  # noqa: PLC0415
+
+    repo_id = None
+    if repo_path:
+        import os  # noqa: PLC0415
+
+        resolved = os.path.abspath(repo_path)
+
+        async def _resolve_id() -> str | None:
+            async with get_session_factory()() as session:
+                row = (
+                    await session.scalars(
+                        select(Repository).where(Repository.git_path == resolved)
+                    )
+                ).first()
+                return str(row.id) if row else None
+
+        repo_id = asyncio.run(_resolve_id())
+        if not repo_id:
+            console.print(f"[bold red]Error:[/bold red] No registered repo at {resolved}")
+            raise typer.Exit(1)
+
+    async def _do_search() -> None:
+        async with get_session_factory()() as session:
+            request = SearchRequest(
+                query=query,
+                repository_id=repo_id,
+                limit=limit,
+            )
+            results = await hybrid_search(session, request)
+
+        if not results:
+            console.print("[dim]No results found.[/dim]")
+            return
+
+        console.print(f"\n[bold cyan]Found {len(results)} hit(s)[/bold cyan] for: {query}\n")
+        for i, r in enumerate(results, 1):
+            methods = ", ".join(r.retrieval_methods) if r.retrieval_methods else "unknown"
+            console.print(
+                f"[bold]#{i}[/bold] [cyan]{r.path}[/cyan]"
+                f" :L{r.start_line}-{r.end_line}  "
+                f"({methods})  score={r.score:.4f}"
+            )
+            if r.relevance_reason:
+                console.print(f"       {r.relevance_reason}")
+            # Show first few lines of content
+            lines = r.text.split("\n")[:8]
+            for line in lines:
+                console.print(f"       {line[:120]}", style="dim")
+            if len(r.text.split("\n")) > 8:
+                console.print("       ...", style="dim")
+            console.print()
+
+    asyncio.run(_do_search())
+
+
+# ------------------------------------------------------------------
 # status
 # ------------------------------------------------------------------
 @cli.command()

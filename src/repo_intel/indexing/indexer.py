@@ -9,6 +9,7 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from repo_intel.config import get_settings
 from repo_intel.db.models import (
     Chunk,
     FileRecord,
@@ -19,6 +20,7 @@ from repo_intel.db.models import (
 )
 from repo_intel.indexing.chunker import chunk_file
 from repo_intel.indexing.discovery import discover_files
+from repo_intel.indexing.embeddings.adapter import get_embeddings_batch
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,8 @@ async def scan_repository(
     # 4. Read content, chunk, and prepare upserts
     total_chunks = 0
     file_ids: dict[str, uuid.UUID] = {}  # relative_path -> existing file_id
+    # Collect chunk objects for embedding after DB flush
+    pending_chunks: list[tuple[Chunk, str]] = []  # (chunk_rec, content_text)
 
     # Load existing files for this repo (for incremental diff)
     existing_stmt = select(FileRecord).where(
@@ -129,7 +133,7 @@ async def scan_repository(
             await session.flush()
             file_id = file_rec.id
 
-        # Upsert chunks
+        # Upsert chunks (embedding set later in batch)
         for chunk in chunks:
             chunk_rec = Chunk(
                 file_id=file_id,
@@ -141,8 +145,10 @@ async def scan_repository(
                 content_hash=chunk.content_hash,
                 content=chunk.content,
                 estimated_tokens=chunk.estimated_tokens,
+                embedding=None,  # filled in batch below
             )
             session.add(chunk_rec)
+            pending_chunks.append((chunk_rec, chunk.content))
             total_chunks += 1
 
         # Detect symbols (functions, classes) from chunks
@@ -158,6 +164,22 @@ async def scan_repository(
                     generation_id=generation_id,
                 )
                 session.add(symbol)
+
+    # 4b. Flush chunk records, then generate embeddings in batch
+    if pending_chunks:
+        await session.flush()
+        logger.info(
+            "Generating embeddings for %d chunks (batch_size=%d)",
+            len(pending_chunks),
+            settings.embedding_batch_size,
+        )
+        chunk_texts = [content for _, content in pending_chunks]
+        embeddings = await get_embeddings_batch(chunk_texts)
+        for i, (chunk_rec, _content) in enumerate(pending_chunks):
+            if i < len(embeddings) and embeddings[i] is not None:
+                chunk_rec.embedding = embeddings[i]
+            else:
+                logger.debug("Embedding unavailable for chunk %s", chunk_rec.id)
 
     # 5. Mark deleted files
     for rel_path, existing in existing_files.items():

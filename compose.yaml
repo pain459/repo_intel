@@ -13,6 +13,8 @@ services:
       - "127.0.0.1:8765:8765"
     volumes:
       - ${HOST_REPO_ROOT:-.}/:/workspace:ro
+      - /Users/ravik/src_git/TencentDB-Agent-Memory:/repos/agent-memory:ro
+      - /Users/ravik/src_git/rea:/repos/rea:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +34,8 @@ services:
     env_file: .env
     volumes:
       - ${HOST_REPO_ROOT:-.}/:/workspace:ro
+      - /Users/ravik/src_git/TencentDB-Agent-Memory:/repos/agent-memory:ro
+      - /Users/ravik/src_git/rea:/repos/rea:ro
     depends_on:
       postgres:
         condition: service_healthy

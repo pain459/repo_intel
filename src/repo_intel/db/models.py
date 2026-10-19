@@ -189,3 +189,65 @@ class IndexJob(Base, TimestampMixin):
     dedupe_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     repository: Mapped[Repository] = relationship(back_populates="jobs")
+
+
+# ---------------------------------------------------------------------------
+# Retrieval Events — observability for search queries
+# ---------------------------------------------------------------------------
+
+
+class RetrievalEvent(Base, TimestampMixin):
+    __tablename__ = "retrieval_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("repositories.id"), nullable=True,
+    )
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    num_results: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estimated_tokens_returned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ---------------------------------------------------------------------------
+# Memories — evidence-backed decisions (Phase 4 schema, Phase 3 tables)
+# ---------------------------------------------------------------------------
+
+
+class Memory(Base, TimestampMixin):
+    __tablename__ = "memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("repositories.id"), nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    # candidate | verified | superseded | rejected
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="candidate")
+    evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    source_commit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Task Checkpoints — session state snapshots
+# ---------------------------------------------------------------------------
+
+
+class TaskCheckpoint(Base):
+    __tablename__ = "task_checkpoints"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("repositories.id"), nullable=True,
+    )
+    session_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    current_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_files: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    pending_steps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
