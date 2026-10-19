@@ -1,7 +1,7 @@
 # Remaining Work — v1.0 Gap Audit
 
 **Date:** 2026-10-19  
-**Status:** All partials closed. Migration `005_phase7` applied. 116 tests passing, lint clean.
+**Status:** Phase 8 complete. 137 tests passing, lint clean.
 
 This document audits the implementation plan against what actually exists in the codebase.
 
@@ -14,34 +14,32 @@ This document audits the implementation plan against what actually exists in the
 | Data Model        | 5    | 0       | 1       |
 | Invariants / Indexing | 4 | 0    | 0       |
 | MCP Tools         | 1    | 0       | 1       |
-| Security / Governance | 4 | 0     | 0       |
-| Observability     | 0    | 0       | 2       |
+| Security / Governance | 5 | 0     | 0       |
+| Observability     | 1    | 0       | 1       |
 | CLI / Installer   | 5    | 0       | 1       |
-| Retrieval Quality | 2    | 0       | 3       |
-| **Total**         | **21** | **0** | **7**   |
-
-(One missing item removed: indexing section is now fully complete.)
+| Retrieval Quality | 3    | 0       | 2       |
+| **Total**         | **24** | **0** | **7**   |
 
 ---
 
-## What Changed in This Pass
+## What Changed In Phases 7-8
 
 | # | Item | Status | Details |
 |---|------|--------|---------|
-| 1 | Loopback default binding | **DONE** | `config.py` + `.env.example` host → `127.0.0.1` |
-| 2 | RetrievalEvent fields | **DONE** | Added via migration `004_phase6` |
-| 3 | Memory model fields | **DONE** | Added via migration `004_phase6` |
-| 4 | IndexGeneration chunker_version | **DONE** | Added via migration `004_phase6` |
-| 5 | Chunk dedup constraint | **DONE** | Via migration `004_phase6` |
-| 6 | Repository deletion | **DONE** | `DELETE` endpoint + CLI |
-| 7 | Freshness metadata in search | **DONE** | Per-hit freshness + stale warnings |
-| 8 | Stale evidence labeling | **DONE** | Stale hits flagged in API response |
-| 9 | Backup/restore CLI + scripts | **DONE** | CLI + `scripts/restore.sh` |
-| 10 | Uninstall flow | **DONE** | `scripts/uninstall.sh` |
-| 11 | MCP connectivity test | **DONE** | `scripts/install.sh` tests MCP |
-| 12 | Stale chunk DB filtering | **DONE** | `Chunk.stale` column, migration `005_phase7`, all 3 search queries filter stale, indexer marks old gens stale |
-| 13 | MCP tool naming alignment | **DONE** | `memory_search`, `memory_record` alias, `task_resume` alias all resolve |
-| 14 | Log credential redaction | **DONE** | `CredentialFilter` on root logger strips tokens, passwords, keys from log output |
+| 1 | Loopback default binding | **DONE** | `config.py` host → `127.0.0.1` |
+| 2 | RetrievalEvent + Memory + IndexGeneration fields | **DONE** | migration `004_phase6` |
+| 3 | Chunk dedup constraint | **DONE** | migration `004_phase6` |
+| 4 | Repository deletion | **DONE** | `DELETE` endpoint + CLI |
+| 5 | Freshness metadata in search | **DONE** | per-hit `generation_created_at`, `is_stale` |
+| 6 | Backup/restore CLI + scripts | **DONE** | |
+| 7 | Uninstall flow | **DONE** | `scripts/uninstall.sh` |
+| 8 | MCP connectivity test | **DONE** | `scripts/install.sh` |
+| 9 | Stale chunk DB filtering | **DONE** | migration `005_phase7`, all queries filter stale |
+| 10 | MCP tool naming alignment | **DONE** | `memory_search`, `memory_record`, `task_resume` resolve |
+| 11 | Log credential redaction | **DONE** | `CredentialFilter` on root logger |
+| 12 | Structured JSON logging | **DONE** | `log_format=json`, `JsonFormatter` emits JSON lines |
+| 13 | Prompt-injection defense | **DONE** | `prompt_guard.py` in search pipeline, leet normalization |
+| 14 | Resource limits | **DONE** | `compose.yaml` deploy.resources.limits on all services |
 
 ---
 
@@ -101,9 +99,9 @@ Plan names now resolve: `memory_search` (canonical), `memory_record` (alias → 
 
 ## 5. Observability Gaps
 
-### 5.1 Structured JSON logs — **MISSING**
-Plan §3: *"Structured JSON logs + Prometheus metrics"*.
-Currently uses plain text format. No `JSONFormatter`. Planned `observability/logging.py` module doesn't exist.
+### 5.1 Structured JSON logs — **DONE** ✅
+New `log_format` setting (`"text"` default, `"json"`). `JsonFormatter` emits
+`{ts, level, logger, msg, exc}` per line. Select via `LOG_FORMAT=json` in `.env`.
 
 ### 5.2 Prometheus metrics — **MISSING**
 No metrics library installed. No metrics endpoints. Planned `observability/metrics.py` doesn't exist.
@@ -138,11 +136,15 @@ Search results include `is_stale` flag. API response includes stale count warnin
 ### 7.3 Freshness checks — **DONE** ✅
 `generation_created_at` returned per-hit. `is_stale` computed vs 1-hour threshold.
 
-### 7.4 Prompt-injection defense — **MISSING**
-Plan §9 (evaluation) and §10 (security) mention prompt-injection text in source comments as test case. Zero defense implementation.
+### 7.4 Prompt-injection defense — **DONE** ✅
+`security/prompt_guard.py`: detects ignore-instructions, role-play, system-prompt-leak,
+and base64-payload patterns in search queries. Leet-speak normalization included.
+Integrated into `hybrid_search` pipeline (step 0). Blocked queries return empty results;
+partially clean queries are sanitized in-place.
 
-### 7.5 Resource limits — **MISSING**
-`compose.yaml` has no `deploy.resources.limits` for memory/CPU on any service.
+### 7.5 Resource limits — **DONE** ✅
+`compose.yaml` now has `deploy.resources.limits` on `api`, `worker`, and `postgres`:
+CPU 2.0, memory 2G (api/worker) / 4G (postgres). Reservations: CPU 0.25-0.5, memory 256-512M.
 
 ---
 
@@ -177,6 +179,9 @@ From plan §14, cross-referenced:
 - [x] **User guide, troubleshooting guide** — docs done
 - [x] **Backup/restore** — scripts + CLI commands working ✅
 - [x] **MCP tool naming matches plan** — aliases resolve `memory_search`, `memory_record`, `task_resume` ✅
+- [x] **Structured JSON logging** — `log_format=json` emits JSON log lines ✅
+- [x] **Prompt-injection defense** — `prompt_guard.py` strips adversarial patterns from search queries ✅
+- [x] **Resource limits** — compose services have CPU/memory constraints ✅
 
 ---
 
@@ -184,12 +189,10 @@ From plan §14, cross-referenced:
 
 Items that can be **deferred beyond v1.0 MVP** (non-goals or optional):
 - Prometheus metrics (observability is nice-to-have, logging + retrieval events exist)
-- Structured JSON logs (plain text works; can add later)
 - Symbol-neighbor expansion (plan says "bounded", can be v1.1)
-- Prompt-injection defense (plan lists it as evaluation test case, not core feature)
-- OpenCode lifecycle hooks / compaction (Phase 5, deferred)
-- Benchmark suite + evaluation docs (v1.1)
 - `symbol_edges` table + `repo_dependencies` tool (v1.1, requires AST analysis)
+- Benchmark suite + evaluation docs (v1.1)
+- OpenCode lifecycle hooks / compaction (Phase 5, deferred)
 
 Items that should be **done for v1.0**:
 - [x] Backup/restore working end-to-end
@@ -199,3 +202,6 @@ Items that should be **done for v1.0**:
 - [x] Freshness metadata in search results
 - [x] MCP tool naming matches plan
 - [x] Log credential redaction
+- [x] Structured JSON logging
+- [x] Prompt-injection defense
+- [x] Resource limits on compose services
