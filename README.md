@@ -32,6 +32,7 @@ See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** — clone, configure, start the
 | Document | What it covers |
 |----------|----------------|
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup for new users |
+| [docs/OPENCODE_SETUP.md](docs/OPENCODE_SETUP.md) | Connect OpenCode, configure MCP, use tools in Code Mode |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Architecture, tech stack, development workflow |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Debugging, crash recovery, emergency procedures |
 
