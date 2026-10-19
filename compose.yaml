@@ -24,6 +24,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    # Resource limits to prevent runaway memory/CPU usage
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
 
 # ------------------------------------------------------------------
 # Worker (background jobs — Phase 2+)
@@ -39,6 +48,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Resource limits to prevent runaway memory/CPU usage
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
 
 # ------------------------------------------------------------------
 # PostgreSQL + pgvector
@@ -56,6 +74,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    # Resource limits for the database
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
 
 volumes:
   pgdata:

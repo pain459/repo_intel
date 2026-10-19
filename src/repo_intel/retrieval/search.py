@@ -329,6 +329,7 @@ async def hybrid_search(
 
     Steps
     -----
+    0. Prompt-injection guard (sanitize query)
     1. Resolve active index generations for the requested scope
     2. Run exact, lexical (FTS), and semantic (vector) candidate retrieval
     3. Fuse via reciprocal rank fusion
@@ -337,6 +338,24 @@ async def hybrid_search(
     6. Apply token budget and return results
     """
     from datetime import datetime  # noqa: PLC0415
+
+    from repo_intel.security.prompt_guard import (  # noqa: PLC0415
+        sanitize_query,
+    )
+
+    # 0. Prompt-injection defense
+    sanitized = sanitize_query(request.query)
+    if not sanitized:
+        logger.warning(
+            "Search query blocked by prompt-injection guard: %s",
+            request.query[:80],
+        )
+        return []
+    if sanitized != request.query:
+        logger.info(
+            "Search query sanitized by prompt-injection guard"
+        )
+    effective_query = sanitized
 
     # 1. Resolve active generations
     generation_ids = await _get_active_generation_ids(session, request.repository_id)
@@ -347,13 +366,13 @@ async def hybrid_search(
 
     # 2. Run all three candidate retrieval modes
     exact = await _exact_candidates(
-        session, request.query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids
     )
     lexical = await _lexical_candidates(
-        session, request.query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids
     )
     semantic = await _semantic_candidates(
-        session, request.query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids
     )
 
     # 3. Fuse
@@ -363,7 +382,7 @@ async def hybrid_search(
     )
 
     if not fused:
-        logger.info("No candidates found for query: %s", request.query[:80])
+        logger.info("No candidates found for query: %s", effective_query[:80])
         return []
 
     # 4. Fetch details for top candidates (get 3x limit to allow budget trimming)

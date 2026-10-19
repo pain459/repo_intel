@@ -64,16 +64,47 @@ class Settings(BaseSettings):
     # Logging
     # ------------------------------------------------------------------
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_format: Literal["text", "json"] = "text"
+
+
+def _setup_json_handler() -> logging.Handler:
+    """Return a handler that emits structured JSON log lines."""
+    import json  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    class JsonFormatter(logging.Formatter):
+        def format(self, record: logging.LogRecord) -> str:
+            payload = {
+                "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "msg": record.getMessage(),
+            }
+            if record.exc_info and record.exc_info[0] is not None:
+                payload["exc"] = self.formatException(record.exc_info)
+            return json.dumps(payload, default=str)
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(JsonFormatter())
+    return handler
 
 
 def setup_logging(level: str | None = None) -> None:
     """Configure the root logger from settings."""
-    effective = level or get_settings().log_level
-    logging.basicConfig(
-        level=getattr(logging, effective, logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-    )
+    settings = get_settings()
+    effective = level or settings.log_level
+    log_fmt = settings.log_format
+
+    if log_fmt == "json":
+        handler = _setup_json_handler()
+        logging.root.setLevel(getattr(logging, effective, logging.INFO))
+        logging.root.addHandler(handler)
+    else:
+        logging.basicConfig(
+            level=getattr(logging, effective, logging.INFO),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
     # Apply credential redaction filter to log output
     from repo_intel.security.log_filter import (  # noqa: PLC0415
         apply_credential_filter,
