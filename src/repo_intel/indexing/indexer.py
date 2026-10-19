@@ -21,6 +21,7 @@ from repo_intel.db.models import (
 from repo_intel.indexing.chunker import chunk_file
 from repo_intel.indexing.discovery import discover_files
 from repo_intel.indexing.embeddings.adapter import get_embeddings_batch
+from repo_intel.security.redaction import redact_content
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,18 @@ async def scan_repository(
 
         # Upsert chunks (embedding set later in batch)
         for chunk in chunks:
+            # Redact secrets from chunk content before storage
+            redacted = redact_content(chunk.content)
+            final_content = redacted.cleaned_text
+            if redacted.patterns_matched > 0:
+                logger.warning(
+                    "Redacted %d secret pattern(s) in %s:%d-%d: %s",
+                    redacted.patterns_matched,
+                    df.relative_path,
+                    chunk.start_line,
+                    chunk.end_line,
+                    ", ".join(set(redacted.pattern_labels)),
+                )
             chunk_rec = Chunk(
                 file_id=file_id,
                 generation_id=generation_id,
@@ -143,12 +156,12 @@ async def scan_repository(
                 chunk_type=chunk.chunk_type,
                 symbol_name=chunk.symbol_name,
                 content_hash=chunk.content_hash,
-                content=chunk.content,
+                content=final_content,
                 estimated_tokens=chunk.estimated_tokens,
                 embedding=None,  # filled in batch below
             )
             session.add(chunk_rec)
-            pending_chunks.append((chunk_rec, chunk.content))
+            pending_chunks.append((chunk_rec, final_content))
             total_chunks += 1
 
         # Detect symbols (functions, classes) from chunks

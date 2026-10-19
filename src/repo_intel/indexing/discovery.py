@@ -1,8 +1,9 @@
-"""File discovery with gitignore filtering and binary detection."""
+"""File discovery with gitignore filtering, binary detection, and security."""
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import stat
 from dataclasses import dataclass
@@ -10,6 +11,16 @@ from dataclasses import dataclass
 from pathspec import GitIgnoreSpec, PathSpec
 
 from repo_intel.config import get_settings
+from repo_intel.security.paths import (
+    SecurityConfig as _SecurityConfig,
+    is_safe_relative_path,
+    is_secret_file,
+)
+
+logger = logging.getLogger(__name__)
+
+# Default security config (loaded once).
+_DEFAULT_SECURITY = _SecurityConfig()
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -30,6 +41,11 @@ _ALWAYS_EXCLUDE = {
     ".venv/",
     "venv/",
     ".env/",
+    ".env",          # the .env file itself (not just .env/ directories)
+    ".env.local",
+    ".env.production",
+    ".env.development",
+    ".env.test",
     "*.egg-info/",
     "*.whl",
     "*.so",
@@ -37,6 +53,15 @@ _ALWAYS_EXCLUDE = {
     "*.dll",
     ".DS_Store",
     "Thumbs.db",
+    # Credential files
+    "id_rsa",
+    "id_ed25519",
+    "id_ecdsa",
+    ".ssh/",
+    "netrc",
+    ".netrc",
+    "htpasswd",
+    "terraform.tfvars",
 }
 
 # Known binary extensions
@@ -185,6 +210,16 @@ def discover_files(
 
             # Symlink check
             if os.path.islink(abs_path):
+                continue
+
+            # Security: reject traversal paths
+            if not is_safe_relative_path(rel_path):
+                logger.warning("Unsafe path rejected: %s", rel_path)
+                continue
+
+            # Security: skip secret/credential files
+            if is_secret_file(rel_path):
+                logger.debug("Secret file skipped: %s", rel_path)
                 continue
 
             # Size check

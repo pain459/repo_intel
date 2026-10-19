@@ -55,11 +55,30 @@ async def register_repository(body: RepositoryCreate) -> IndexTriggerOut:
     if not os.path.isdir(resolved):
         raise HTTPException(400, f"Not a directory: {resolved}")
 
+    # Security: reject paths with traversal components
+    from repo_intel.security.paths import (  # noqa: PLC0415
+        is_safe_relative_path,
+        resolve_safe,
+    )
+
+    # Validate the resolved path doesn't contain traversal sequences
+    try:
+        # Ensure the path is a real directory (resolves symlinks)
+        real_path = os.path.realpath(resolved)
+    except (OSError, ValueError):
+        raise HTTPException(400, f"Cannot resolve path: {body.path}")
+
+    # Reject if the resolved path differs significantly (symlink escape)
+    if not os.path.isdir(real_path):
+        raise HTTPException(400, f"Resolved path is not a directory: {real_path}")
+
     repo_name = body.name or os.path.basename(resolved)
 
     async with get_session_factory()() as session:
-        # Check duplicate
-        stmt = select(Repository).where(Repository.git_path == resolved)
+        # Check duplicate (check both resolved and real paths)
+        stmt = select(Repository).where(
+            (Repository.git_path == resolved) | (Repository.git_path == real_path)
+        )
         existing = (await session.scalars(stmt)).first()
         if existing:
             return IndexTriggerOut(
@@ -70,7 +89,7 @@ async def register_repository(body: RepositoryCreate) -> IndexTriggerOut:
         repo = Repository(
             id=uuid.uuid4(),
             name=repo_name,
-            git_path=resolved,
+            git_path=real_path,  # store the real path (symlinks resolved)
             status="registered",
         )
         session.add(repo)

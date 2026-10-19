@@ -194,10 +194,21 @@ docker compose exec api bash
 - Context compaction: auto-summarize old memories and checkpoints
 - Session resume: restore agent working state from last checkpoint
 
-### Phase 6 — Hardening and release (backlog)
+### Phase 6 — Security Hardening ✅ (current)
 
-- [ ] Evaluation benchmark, backup/restore, security audit
-- [ ] Release packaging, user guide, CI artifacts
+- [x] Path traversal protection in discovery pipeline
+- [x] Symlink escape prevention (reject symlinks, resolve real paths)
+- [x] Repository registration validates path confinement
+- [x] Secret file exclusion: `.env`, SSH keys, `.ssh/`, cert files, terraform.tfvars
+- [x] Content redaction before chunk storage (API keys, passwords, tokens, private keys)
+- [x] 44 new security tests, ruff lint clean
+
+### Phase 7 — Backlog
+
+- [ ] Evaluation benchmark suite (recall@N, retrieval latency)
+- [ ] True delta indexing (per-file re-embedding, not full rescan)
+- [ ] Backup/restore CLI command
+- [ ] Symbol edges / dependency graph
 
 See [implementation plan](repo_intel_implementation_plan.md) for the full architecture and phase details.
 
