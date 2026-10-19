@@ -62,6 +62,53 @@ async def call_tool(body: ToolCall) -> dict:
             raise HTTPException(400, "index_status requires 'repository_id' parameter")
         return await mcp_server.tool_index_status(factory, repository_id=repo_id)
 
+    if body.tool == "memory_write":
+        kind = body.parameters.get("kind")
+        statement = body.parameters.get("statement")
+        if not kind or not statement:
+            raise HTTPException(
+                400, "memory_write requires 'kind' and 'statement' parameters"
+            )
+        return await mcp_server.tool_memory_write(
+            factory,
+            kind=kind,
+            statement=statement,
+            repository_id=body.parameters.get("repository_id"),
+            evidence=body.parameters.get("evidence"),
+            source_commit=body.parameters.get("source_commit"),
+        )
+
+    if body.tool == "memory_read":
+        return await mcp_server.tool_memory_read(
+            factory,
+            query=body.parameters.get("query"),
+            repository_id=body.parameters.get("repository_id"),
+            kind=body.parameters.get("kind"),
+            limit=int(body.parameters.get("limit", 20)),
+        )
+
+    if body.tool == "checkpoint_save":
+        objective = body.parameters.get("objective")
+        if not objective:
+            raise HTTPException(400, "checkpoint_save requires 'objective' parameter")
+        return await mcp_server.tool_checkpoint_save(
+            factory,
+            objective=objective,
+            session_id=body.parameters.get("session_id"),
+            repository_id=body.parameters.get("repository_id"),
+            current_state=body.parameters.get("current_state"),
+            changed_files=body.parameters.get("changed_files"),
+            pending_steps=body.parameters.get("pending_steps"),
+            evidence=body.parameters.get("evidence"),
+        )
+
+    if body.tool == "checkpoint_get":
+        return await mcp_server.tool_checkpoint_get(
+            factory,
+            session_id=body.parameters.get("session_id"),
+            repository_id=body.parameters.get("repository_id"),
+        )
+
     raise HTTPException(404, f"Unknown tool: {body.tool}")
 
 
@@ -106,6 +153,48 @@ async def list_tools() -> dict:
                 "description": "Get index status for a repository",
                 "parameters": {
                     "repository_id": {"type": "string", "required": True},
+                },
+            },
+            {
+                "name": "memory_write",
+                "description": "Write a new agent memory (preference, observation, pattern)",
+                "parameters": {
+                    "kind": {"type": "string", "required": True},
+                    "statement": {"type": "string", "required": True},
+                    "repository_id": {"type": "string", "required": False},
+                    "evidence": {"type": "object", "required": False},
+                    "source_commit": {"type": "string", "required": False},
+                },
+            },
+            {
+                "name": "memory_read",
+                "description": "Read agent memories with filtering and scoring",
+                "parameters": {
+                    "query": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                    "kind": {"type": "string", "required": False},
+                    "limit": {"type": "integer", "required": False, "default": 20},
+                },
+            },
+            {
+                "name": "checkpoint_save",
+                "description": "Save a task progress checkpoint",
+                "parameters": {
+                    "objective": {"type": "string", "required": True},
+                    "session_id": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                    "current_state": {"type": "string", "required": False},
+                    "changed_files": {"type": "array", "required": False},
+                    "pending_steps": {"type": "array", "required": False},
+                    "evidence": {"type": "object", "required": False},
+                },
+            },
+            {
+                "name": "checkpoint_get",
+                "description": "Retrieve the latest checkpoint for a session",
+                "parameters": {
+                    "session_id": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
                 },
             },
         ]

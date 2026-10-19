@@ -244,3 +244,189 @@ async def tool_repo_context(
             for r in results
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Memory tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_memory_write(
+    session_factory,
+    kind: str,
+    statement: str,
+    repository_id: str | None = None,
+    evidence: dict | None = None,
+    source_commit: str | None = None,
+) -> dict:
+    """Write a new agent memory."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Memory, Repository  # noqa: PLC0415
+
+    async with session_factory() as session:
+        if repository_id:
+            repo = (
+                await session.scalars(
+                    select(Repository).where(Repository.id == repository_id)
+                )
+            ).first()
+            if not repo:
+                return {"error": f"Repository {repository_id} not found"}
+
+        memory = Memory(
+            repository_id=repository_id,
+            kind=kind,
+            statement=statement,
+            status="candidate",
+            evidence=evidence,
+            source_commit=source_commit,
+        )
+        session.add(memory)
+        await session.commit()
+        await session.refresh(memory)
+
+    return {
+        "id": str(memory.id),
+        "kind": memory.kind,
+        "statement": memory.statement,
+        "status": memory.status,
+        "message": "Memory created",
+    }
+
+
+async def tool_memory_read(
+    session_factory,
+    query: str | None = None,
+    repository_id: str | None = None,
+    kind: str | None = None,
+    limit: int = 20,
+) -> dict:
+    """Read agent memories, optionally filtered and scored."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Memory  # noqa: PLC0415
+
+    async with session_factory() as session:
+        stmt = select(Memory)
+        if repository_id:
+            stmt = stmt.where(Memory.repository_id == repository_id)
+        if kind:
+            stmt = stmt.where(Memory.kind == kind)
+        if query:
+            stmt = stmt.where(Memory.statement.ilike(f"%{query}%"))
+
+        rows = await session.scalars(
+            stmt.order_by(Memory.id.desc()).limit(limit)
+        )
+        memories = list(rows)
+
+    return {
+        "num_memories": len(memories),
+        "memories": [
+            {
+                "id": str(m.id),
+                "kind": m.kind,
+                "statement": m.statement,
+                "status": m.status,
+                "repository_id": str(m.repository_id) if m.repository_id else None,
+                "created_at": str(m.created_at),
+            }
+            for m in memories
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_checkpoint_save(
+    session_factory,
+    objective: str,
+    session_id: str | None = None,
+    repository_id: str | None = None,
+    current_state: str | None = None,
+    changed_files: list[str] | None = None,
+    pending_steps: list[str] | None = None,
+    evidence: dict | None = None,
+) -> dict:
+    """Save a task checkpoint."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Repository, TaskCheckpoint  # noqa: PLC0415
+
+    async with session_factory() as session:
+        if repository_id:
+            repo = (
+                await session.scalars(
+                    select(Repository).where(Repository.id == repository_id)
+                )
+            ).first()
+            if not repo:
+                return {"error": f"Repository {repository_id} not found"}
+
+        cp = TaskCheckpoint(
+            repository_id=repository_id,
+            session_id=session_id,
+            objective=objective,
+            current_state=current_state,
+            changed_files=changed_files,
+            pending_steps=pending_steps,
+            evidence=evidence,
+        )
+        session.add(cp)
+        await session.commit()
+        await session.refresh(cp)
+
+    return {
+        "id": str(cp.id),
+        "session_id": cp.session_id,
+        "objective": cp.objective,
+        "created_at": str(cp.created_at),
+        "message": "Checkpoint saved",
+    }
+
+
+async def tool_checkpoint_get(
+    session_factory,
+    session_id: str | None = None,
+    repository_id: str | None = None,
+) -> dict:
+    """Get the latest checkpoint for a session/repo combination."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import TaskCheckpoint  # noqa: PLC0415
+
+    async with session_factory() as session:
+        stmt = select(TaskCheckpoint)
+        if session_id:
+            stmt = stmt.where(TaskCheckpoint.session_id == session_id)
+        if repository_id:
+            stmt = stmt.where(
+                TaskCheckpoint.repository_id == repository_id
+            )
+
+        cp = (
+            await session.scalars(
+                stmt.order_by(
+                    TaskCheckpoint.created_at.desc()
+                ).limit(1)
+            )
+        ).first()
+
+    if not cp:
+        return {"error": "No checkpoint found", "checkpoint": None}
+
+    return {
+        "id": str(cp.id),
+        "session_id": cp.session_id,
+        "repository_id": str(cp.repository_id) if cp.repository_id else None,
+        "objective": cp.objective,
+        "current_state": cp.current_state,
+        "changed_files": cp.changed_files,
+        "pending_steps": cp.pending_steps,
+        "evidence": cp.evidence,
+        "created_at": str(cp.created_at),
+    }
