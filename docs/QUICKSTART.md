@@ -50,16 +50,14 @@ curl http://localhost:8765/health/ready  # {"status":"ok","database":"ok","ollam
 
 ## 3. Register a Repository
 
-Tell repo_intel which local repos to index. The repos must already be mounted into the Docker containers via `compose.yaml` volumes.
+The `repo add` command takes the path as a **positional argument** (inside the container). Optional `--name` sets a friendly label.
 
 ```bash
-docker compose exec api repo-intel repo add \
-  --name "my-project" \
-  --path /workspace/my-project \
-  --language python
+# Register a repo (path is inside the container)
+docker compose exec api repo-intel repo add --name "my-project" /workspace/my-project
 ```
 
-> **Note:** `/workspace` inside the container maps to whatever host directory you set `HOST_REPO_ROOT=` to in compose. Adjust the `--path` accordingly.
+> **Note:** `/workspace` inside the container maps to the host directory you mounted in `compose.yaml` (`HOST_REPO_ROOT`). Adjust accordingly.
 
 Verify it registered:
 
@@ -72,7 +70,11 @@ docker compose exec api repo-intel repo list
 ## 4. Run the First Index
 
 ```bash
-docker compose exec api repo-intel index --repository-id <uuid-from-above>
+# Index a specific repo by its container path
+docker compose exec api repo-intel index --repo-path /workspace/my-project
+
+# Or index everything
+docker compose exec api repo-intel index
 ```
 
 Or let the worker pick it up automatically. The worker polls every 10 seconds (configurable via `INDEX_POLL_SECONDS`) and indexes any unindexed or modified repos.
@@ -87,12 +89,13 @@ docker compose exec api repo-intel status
 
 ## 5. Search
 
+The search query is a **positional argument**. Use `--repo-path` to scope to a specific repo.
+
 ### From the CLI
 
 ```bash
-docker compose exec api repo-intel search \
-  --query "how does authentication work" \
-  --repository-id <uuid>
+docker compose exec api repo-intel search "how does authentication work"
+docker compose exec api repo-intel search "database connection" --repo-path /workspace/my-project --limit 5
 ```
 
 ### Via the API
@@ -105,15 +108,13 @@ curl -X POST http://localhost:8765/search \
 
 ### From OpenCode (MCP Tools)
 
-Once configured, use any of the 17 MCP tools directly in Code Mode:
+Once configured (see [OPENCODE_SETUP.md](OPENCODE_SETUP.md)), use any of the MCP tools directly in Code Mode:
 
 ```
 tools.repo_intel["repo_search"](query="authentication flow", repository_id="<uuid>")
 tools.repo_intel["repo_symbol"](symbol_name="authenticate_user")
 tools.repo_intel["repo_dependencies"](symbol_name="authenticate_user", direction="outgoing")
 ```
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the full MCP tool list and connection setup.
 
 ---
 
@@ -139,5 +140,6 @@ Runs 10 predefined queries and reports recall, latency, and coverage metrics.
 
 ## What's next?
 
+- **[OPENCODE_SETUP.md](OPENCODE_SETUP.md)** — Connect OpenCode, configure MCP, model setup, tool reference
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** — Architecture, tech stack, development workflow
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — Debugging and crash recovery

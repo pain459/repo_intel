@@ -82,7 +82,7 @@ docker compose ps worker
 docker compose logs worker | tail -30
 
 # Manual index
-docker compose exec api repo-intel index --repository-id <uuid>
+docker compose exec api repo-intel index --repo-path /workspace/my-project
 
 # Check the repo path is accessible inside the container
 docker compose exec api ls -la /workspace/
@@ -109,7 +109,7 @@ docker compose up -d --build
 
 ```bash
 # Force re-index
-docker compose exec api repo-intel index --repository-id <uuid> --force
+docker compose exec api repo-intel index --repo-path /workspace/my-project
 
 # Check for large files (MAX_FILE_BYTES default 1MB)
 find /path/to/repo -size +1M -type f
@@ -129,7 +129,7 @@ docker compose exec api repo-intel status
 docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*) FROM index_chunks;"
 
 # 3. Try a simpler query
-docker compose exec api repo-intel search --query "import"
+docker compose exec api repo-intel search "import"
 
 # 4. Check Ollama is responding (semantic search requires it)
 curl http://localhost:8765/health/ready
@@ -263,7 +263,7 @@ docker compose up -d --build
 docker compose exec api alembic upgrade head
 
 # Re-register repos and re-index
-docker compose exec api repo-intel repo add --name "my-project" --path /workspace/my-project --language python
+docker compose exec api repo-intel repo add --name "my-project" /workspace/my-project
 ```
 
 ### Container Stuck in Restart Loop
