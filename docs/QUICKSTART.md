@@ -50,36 +50,60 @@ curl http://localhost:8765/health/ready  # {"status":"ok","database":"ok","ollam
 
 ## 3. Register a Repository
 
-The `repo add` command takes the path as a **positional argument** (inside the container). Optional `--name` sets a friendly label.
+The path is **inside the container**. Your host repos are mounted via `compose.yaml` volumes.
 
-```bash
-# Register a repo (path is inside the container)
-docker compose exec api repo-intel repo add --name "my-project" /workspace/my-project
+### Mount Your Repo
+
+If `FLOW` lives at `/Users/ravik/src_git/FLOW` on your Mac, add a volume to `compose.yaml` under the `api` and `worker` services:
+
+```yaml
+volumes:
+  - /Users/ravik/src_git/FLOW:/repos/FLOW:ro
 ```
 
-> **Note:** `/workspace` inside the container maps to the host directory you mounted in `compose.yaml` (`HOST_REPO_ROOT`). Adjust accordingly.
+Then restart:
 
-Verify it registered:
+```bash
+docker compose up -d
+```
+
+### Register It
+
+```bash
+docker compose exec api repo-intel repo add --name "FLOW" /repos/FLOW
+```
+
+`--name` is optional — without it, repo_intel uses the directory basename.
+
+### List Registered Repos
 
 ```bash
 docker compose exec api repo-intel repo list
 ```
+
+### Remove a Repository (if needed)
+
+```bash
+docker compose exec api repo-intel repo remove <uuid> --yes
+```
+
+Get the UUID from the `repo list` output.
 
 ---
 
 ## 4. Run the First Index
 
 ```bash
-# Index a specific repo by its container path
-docker compose exec api repo-intel index --repo-path /workspace/my-project
+# Index a specific repo
+docker compose exec api repo-intel index --repo-path /repos/FLOW
 
 # Or index everything
 docker compose exec api repo-intel index
 ```
 
-Or let the worker pick it up automatically. The worker polls every 10 seconds (configurable via `INDEX_POLL_SECONDS`) and indexes any unindexed or modified repos.
+Or let the worker pick it up automatically (polls every 10 seconds).
 
-Check progress:
+### Check Progress
 
 ```bash
 docker compose exec api repo-intel status
@@ -89,13 +113,17 @@ docker compose exec api repo-intel status
 
 ## 5. Search
 
-The search query is a **positional argument**. Use `--repo-path` to scope to a specific repo.
-
-### From the CLI
+The query is a **positional argument**. Use `--repo-path` to scope to a repo.
 
 ```bash
-docker compose exec api repo-intel search "how does authentication work"
-docker compose exec api repo-intel search "database connection" --repo-path /workspace/my-project --limit 5
+# Search all repos
+docker compose exec api repo-intel search "authentication"
+
+# Scope to FLOW
+docker compose exec api repo-intel search "database connection" --repo-path /repos/FLOW
+
+# Limit results
+docker compose exec api repo-intel search "error handling" --limit 5
 ```
 
 ### Via the API
@@ -106,40 +134,79 @@ curl -X POST http://localhost:8765/search \
   -d '{"query": "how does authentication work", "limit": 10}'
 ```
 
-### From OpenCode (MCP Tools)
-
-Once configured (see [OPENCODE_SETUP.md](OPENCODE_SETUP.md)), use any of the MCP tools directly in Code Mode:
-
-```
-tools.repo_intel["repo_search"](query="authentication flow", repository_id="<uuid>")
-tools.repo_intel["repo_symbol"](symbol_name="authenticate_user")
-tools.repo_intel["repo_dependencies"](symbol_name="authenticate_user", direction="outgoing")
-```
-
 ---
 
-## 6. Verify with Doctor
+## 6. Run Diagnostics
 
 ```bash
 docker compose exec api repo-intel doctor
 ```
 
-This checks database connectivity, Ollama availability, repository status, and index health. Every check should report `OK`.
+Checks database, Ollama connectivity, environment config. All should pass.
 
 ---
 
-## 7. Optional — Run the Benchmark
+## 7. Run the Benchmark
 
 ```bash
+# All repos
 docker compose exec api repo-intel benchmark
+
+# Specific repo
+docker compose exec api repo-intel benchmark --repository-id <uuid>
 ```
 
-Runs 10 predefined queries and reports recall, latency, and coverage metrics.
+---
+
+## 8. Backup and Restore
+
+```bash
+# Create a backup (saved to ./backups/)
+docker compose exec api repo-intel backup
+
+# Custom output directory
+docker compose exec api repo-intel backup --output /tmp/backups
+
+# Restore from a backup file
+docker compose exec api repo-intel restore /path/to/repo_intel_db_20260101_120000.sql.gz --yes
+```
+
+---
+
+## 9. Configure OpenCode MCP
+
+Generate the OpenCode MCP config automatically:
+
+```bash
+docker compose exec api repo-intel mcp configure --client opencode --transport sse
+```
+
+Prompts you to confirm, then writes to `~/.config/opencode/mcp.json`.
+
+---
+
+## 10. Verify with MCP Tools
+
+Once OpenCode is configured (see [OPENCODE_SETUP.md](OPENCODE_SETUP.md)), test in Code Mode:
+
+```
+# List repos
+tools.repo_intel["repo_list"]()
+
+# Search
+tools.repo_intel["repo_search"](query="authentication", limit=5)
+
+# Find a symbol
+tools.repo_intel["repo_symbol"](symbol_name="authenticate_user")
+
+# Check index status
+tools.repo_intel["index_status"](repository_id="<uuid>")
+```
 
 ---
 
 ## What's next?
 
-- **[OPENCODE_SETUP.md](OPENCODE_SETUP.md)** — Connect OpenCode, configure MCP, model setup, tool reference
+- **[OPENCODE_SETUP.md](OPENCODE_SETUP.md)** — Connect OpenCode, configure MCP, model setup, full tool reference
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** — Architecture, tech stack, development workflow
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — Debugging and crash recovery
