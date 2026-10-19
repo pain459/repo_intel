@@ -82,6 +82,9 @@ def create_app() -> FastAPI:
     app.include_router(memory_router)
     app.include_router(cp_router)
 
+    from repo_intel.api.metrics import router as metrics_router  # noqa: PLC0415
+    app.include_router(metrics_router, tags=["metrics"])
+
     return app
 
 

@@ -9,6 +9,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -153,6 +154,39 @@ class Chunk(Base, TimestampMixin):
 
 
 # ---------------------------------------------------------------------------
+# Symbol Edges — dependency edges between symbols
+# ---------------------------------------------------------------------------
+
+
+class SymbolEdge(Base, TimestampMixin):
+    __tablename__ = "symbol_edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("repositories.id"), nullable=False,
+    )
+    from_symbol_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("symbols.id"), nullable=False,
+    )
+    to_symbol_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("symbols.id"), nullable=False,
+    )
+    # enum: imports, calls, references
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_location: Mapped[str | None] = mapped_column(
+        String(512), nullable=True,
+    )
+    confidence: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.5,
+    )
+    generation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("index_generations.id"), nullable=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Symbols — definitions discovered during parsing
 # ---------------------------------------------------------------------------
 
@@ -160,18 +194,31 @@ class Chunk(Base, TimestampMixin):
 class Symbol(Base, TimestampMixin):
     __tablename__ = "symbols"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id"), nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("files.id"), nullable=False,
+    )
     name: Mapped[str] = mapped_column(String(512), nullable=False)
-    fully_qualified: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    # enum: function, class, method, variable, interface, enum, type_alias
+    fully_qualified: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True,
+    )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    # Line range where defined
     start_line: Mapped[int] = mapped_column(Integer, nullable=False)
     end_line: Mapped[int] = mapped_column(Integer, nullable=False)
-    parser_source: Mapped[str] = mapped_column(String(64), nullable=False, default="text")
+    parser_source: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="text",
+    )
     generation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("index_generations.id"), nullable=False,
+    )
+
+    outgoing_edges: Mapped[list[SymbolEdge]] = relationship(
+        foreign_keys=lambda: [SymbolEdge.from_symbol_id],
+    )
+    incoming_edges: Mapped[list[SymbolEdge]] = relationship(
+        foreign_keys=lambda: [SymbolEdge.to_symbol_id],
     )
 
 

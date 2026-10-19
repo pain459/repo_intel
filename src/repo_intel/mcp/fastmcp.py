@@ -584,6 +584,100 @@ async def task_resume_alias(
 
 
 # ---------------------------------------------------------------------------
+# Dependency graph tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def repo_dependencies(
+    symbol_name: str,
+    repository_id: str | None = None,
+    direction: str = "outgoing",
+    depth: int = 2,
+) -> dict:
+    """Traverse the symbol dependency graph for a given symbol.
+
+    Returns bounded, evidence-linked dependency edges (imports, calls,
+    references) starting from the named symbol.
+
+    Args:
+        symbol_name: Symbol name to start traversal from.
+        repository_id: Optional repository UUID to scope the search.
+        direction: "outgoing" (what the symbol depends on) or
+                   "incoming" (what depends on the symbol).
+        depth: Maximum traversal depth (default 2, max 5).
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Symbol, SymbolEdge
+
+    factory = get_session_factory()
+    async with factory() as session:
+        # Find the starting symbol
+        stmt = select(Symbol).where(
+            Symbol.name.ilike(f"%{symbol_name}%")
+        ).limit(5)
+        if repository_id:
+            from repo_intel.db.models import FileRecord  # noqa: PLC0415
+            stmt = stmt.join(FileRecord).where(
+                FileRecord.repository_id == repository_id
+            )
+        symbols = list(await session.scalars(stmt))
+        if not symbols:
+            return {"error": f"No symbol matching '{symbol_name}' found", "edges": []}
+
+        start_ids = {str(s.id) for s in symbols}
+
+        # BFS traversal
+        visited: set[str] = set()
+        edges_found: list[dict] = []
+        current_ids = start_ids
+
+        for _depth_level in range(min(depth, 5)):
+            if not current_ids or len(edges_found) >= 50:
+                break
+            edge_stmt = select(SymbolEdge).where(
+                SymbolEdge.from_symbol_id.in_(current_ids)
+                if direction == "outgoing"
+                else SymbolEdge.to_symbol_id.in_(current_ids)
+            )
+            rows = await session.scalars(edge_stmt)
+            next_ids: set[str] = set()
+            for edge in rows:
+                if str(edge.id) in visited:
+                    continue
+                visited.add(str(edge.id))
+                other_id = (
+                    str(edge.to_symbol_id)
+                    if direction == "outgoing"
+                    else str(edge.from_symbol_id)
+                )
+                # Fetch the target symbol name
+                target = await session.get(Symbol, other_id)
+                to_name = target.name if target else "unknown"
+                from_name = (
+                    symbols[0].name if direction == "outgoing" else to_name
+                )
+                edges_found.append({
+                    "from_symbol": from_name,
+                    "to_symbol": to_name,
+                    "relation_type": edge.relation_type,
+                    "evidence_location": edge.evidence_location,
+                    "confidence": edge.confidence,
+                })
+                next_ids.add(other_id)
+            current_ids = next_ids - visited
+
+    return {
+        "symbol": symbol_name,
+        "direction": direction,
+        "depth": depth,
+        "num_edges": len(edges_found),
+        "edges": edges_found,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Expose for mounting in app.py
 # ---------------------------------------------------------------------------
 

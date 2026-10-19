@@ -769,6 +769,50 @@ def restore(
 
 
 # ------------------------------------------------------------------
+# benchmark
+# ------------------------------------------------------------------
+@cli.command()
+def benchmark(
+    repository_id: str | None = typer.Option(
+        None, "--repository-id", "-r",
+        help="Repository UUID to benchmark (default: all)",
+    ),
+    limit: int = typer.Option(
+        10, "--limit", "-l", help="Results limit per query",
+    ),
+) -> None:
+    """Run the retrieval quality benchmark suite."""
+    from repo_intel.benchmark.runner import run_benchmark  # noqa: PLC0415
+
+    async def _run() -> None:
+        result = await run_benchmark(repository_id=repository_id, limit=limit)
+        console.print("[bold]Benchmark Results[/bold]")
+        console.print(f"  Queries: {result['num_queries']}")
+        console.print(f"  Avg Latency: {result['avg_latency_ms']} ms")
+        console.print(f"  Total Latency: {result['total_latency_ms']} ms")
+        console.print()
+
+        table = Table()
+        table.add_column("Query")
+        table.add_column("Latency (ms)")
+        table.add_column("Results")
+        table.add_column("Recall@10")
+        table.add_column("Methods")
+
+        for r in result["results"]:
+            table.add_row(
+                r["query"],
+                str(r["latency_ms"]),
+                str(r["num_results"]),
+                f"{r['recall_at_10']:.2%}",
+                ", ".join(r["methods"]) if r["methods"] else "-",
+            )
+        console.print(table)
+
+    asyncio.run(_run())
+
+
+# ------------------------------------------------------------------
 # mcp (sub-app for MCP configuration)
 # ------------------------------------------------------------------
 mcp_cli = typer.Typer(help="Configure MCP (Model Context Protocol) clients.")
