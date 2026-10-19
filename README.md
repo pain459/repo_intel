@@ -72,17 +72,43 @@ MacBook Pro (localhost)                          Ubuntu 192.168.68.62
 | `repo-intel index`                      | Trigger an immediate index scan          |
 | `repo-intel status`                     | Show repository index status             |
 | `repo-intel doctor`                     | Run preflight diagnostics                |
+| `repo-intel search "query"`             | Hybrid search across indexed repos       |
+
+## MCP Tools (9)
+
+| Tool               | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| `repo_list`        | List registered repositories and index status   |
+| `repo_search`      | Hybrid search (exact + FTS + vector)            |
+| `repo_symbol`      | Find symbol definitions by name                 |
+| `repo_context`     | Build a curated evidence pack for a task        |
+| `index_status`     | Get index status for a repository               |
+| `memory_write`     | Write an agent memory                           |
+| `memory_read`      | Query agent memories with filtering             |
+| `checkpoint_save`  | Save a task progress snapshot                   |
+| `checkpoint_get`   | Retrieve latest checkpoint for a session        |
 
 ## REST API
 
-| Endpoint                        | Method | Description                          |
-| ------------------------------- | ------ | ------------------------------------ |
-| `/health/live`                  | GET    | Liveness probe                       |
-| `/health/ready`                 | GET    | Readiness (DB + Ollama checks)       |
-| `/api/repositories/`            | GET    | List all registered repositories     |
-| `/api/repositories/`            | POST   | Register a new repository            |
-| `/api/repositories/{id}`        | GET    | Get repository details               |
-| `/api/repositories/{id}/index`  | POST   | Trigger re-index                     |
+| Endpoint                               | Method   | Description                             |
+| -------------------------------------- | -------- | --------------------------------------- |
+| `/health/live`                         | GET      | Liveness probe                          |
+| `/health/ready`                        | GET      | Readiness (DB + Ollama checks)          |
+| `/api/repositories/`                   | GET      | List all registered repositories        |
+| `/api/repositories/`                   | POST     | Register a new repository               |
+| `/api/repositories/{id}`               | GET      | Get repository details                  |
+| `/api/repositories/{id}/index`         | POST     | Trigger re-index                        |
+| `/api/search/`                         | POST     | Hybrid search (exact + FTS + vector)    |
+| `/api/memory/`                         | POST     | Create an agent memory                  |
+| `/api/memory/`                         | GET      | List agent memories (filter, search)    |
+| `/api/memory/{id}`                     | PATCH    | Update a memory                         |
+| `/api/memory/{id}`                     | DELETE   | Delete a memory                         |
+| `/api/checkpoints/`                    | POST     | Save a task checkpoint                  |
+| `/api/checkpoints/`                    | GET      | List checkpoints                        |
+| `/api/checkpoints/{id}`                | GET      | Get a checkpoint                        |
+| `/api/checkpoints/{id}`                | DELETE   | Delete a checkpoint                     |
+| `/api/mcp/tools`                       | GET      | List all MCP tools                      |
+| `/api/mcp/call`                        | POST     | Dispatch an MCP tool call               |
 
 ## Development
 
@@ -138,24 +164,35 @@ docker compose exec api bash
 - [x] Background worker with polling job queue
 - [x] 26 tests passing, ruff lint clean
 
-### Phase 3 — Hybrid retrieval and MCP (backlog)
+### Phase 3 — Hybrid Retrieval and MCP ✅ (commit `c27094a`)
 
-- [ ] Exact / FTS / vector candidate search
-- [ ] Reciprocal rank fusion, deduplication, context-pack budgeting
-- [ ] REST `/api/search` endpoint
-- [ ] MCP server + tools for OpenCode integration
-- [ ] OpenCode configuration helper
+- [x] Hybrid search pipeline: exact match + FTS + vector cosine with RRF fusion (K=60)
+- [x] PostgreSQL FTS GIN index on chunk content
+- [x] PostgreSQL HNSW vector index on 768-dim embeddings (cosine distance)
+- [x] Batch embedding generation wired into indexer (Ollama nomic-embed-text)
+- [x] REST `/api/search` endpoint with token budgeting and retrieval observability
+- [x] 5 MCP tools: `repo_list`, `repo_search`, `repo_symbol`, `repo_context`, `index_status`
+- [x] CLI: `repo-intel search` command
+- [x] Alembic migration 003 (FTS + vector indexes, observation tables)
+- [x] Verified against 2 repos (~19k chunks, Python + JS/TS)
+- [x] 39 tests passing, ruff lint clean
 
-### Phase 4 — Persistent evidence-backed memory (backlog)
+### Phase 4 — Agent Memory and Session State ✅ (commit `6efd96a`)
 
-- [ ] Memory schema and lifecycle (candidate → verified → superseded)
-- [ ] Task checkpoints, cross-session retrieval
-- [ ] Memory MCP tools
+- [x] Memory CRUD API: create, list (filter/search), update status, delete
+- [x] Memory lifecycle: candidate → verified | superseded | rejected
+- [x] Repo-scoped and global memories with evidence and source commit tracking
+- [x] Checkpoint CRUD API: save, list (by session), get, delete
+- [x] Task checkpoints: objective, changed files, pending steps, session grouping
+- [x] 4 MCP tools: `memory_write`, `memory_read`, `checkpoint_save`, `checkpoint_get`
+- [x] Total MCP tools: 9
+- [x] 64 tests passing, ruff lint clean, full e2e verified
 
 ### Phase 5 — Context continuity (backlog)
 
-- [ ] Optional OpenCode lifecycle hooks
-- [ ] Compaction survival and manual fallback
+- Optional OpenCode lifecycle hooks for automatic memory/checkpoint sync
+- Context compaction: auto-summarize old memories and checkpoints
+- Session resume: restore agent working state from last checkpoint
 
 ### Phase 6 — Hardening and release (backlog)
 
