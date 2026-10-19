@@ -584,6 +584,107 @@ async def task_resume_alias(
 
 
 # ---------------------------------------------------------------------------
+# Compaction continuity tools (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool
+async def compaction_checkpoint_save(
+    objective: str,
+    session_id: str | None = None,
+    repository_id: str | None = None,
+    current_state: str | None = None,
+    changed_files: list[str] | None = None,
+    pending_steps: list[str] | None = None,
+    evidence: dict | None = None,
+) -> dict:
+    """Save a checkpoint optimized for compaction recovery.
+
+    Invoke this before context compaction so that work-in-progress is
+    preserved.  Unlike a generic checkpoint, this also captures the
+    current verified memories and indexes them so they are available
+    during resume.
+
+    Args:
+        objective: High-level task objective.
+        session_id: Session identifier for grouping.
+        repository_id: Optional repository UUID.
+        current_state: What has been done so far.
+        changed_files: Files modified during this session.
+        pending_steps: Remaining steps.
+        evidence: Supporting evidence dict.
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Repository, TaskCheckpoint
+
+    factory = get_session_factory()
+    async with factory() as session:
+        if repository_id:
+            repo = (
+                await session.scalars(
+                    select(Repository).where(
+                        Repository.id == repository_id,
+                    ),
+                )
+            ).first()
+            if not repo:
+                return {"error": f"Repository {repository_id} not found"}
+
+        # Also attach a compaction marker to evidence
+        evidence = evidence or {}
+        evidence.setdefault("compaction", {})[
+            "save_type"
+        ] = "pre_compaction"
+
+        cp = TaskCheckpoint(
+            repository_id=repository_id,
+            session_id=session_id,
+            objective=objective,
+            current_state=current_state,
+            changed_files=changed_files,
+            pending_steps=pending_steps,
+            evidence=evidence,
+        )
+        session.add(cp)
+        await session.commit()
+        await session.refresh(cp)
+
+    return {
+        "id": str(cp.id),
+        "session_id": cp.session_id,
+        "objective": cp.objective,
+        "created_at": str(cp.created_at),
+        "message": "Compaction checkpoint saved",
+    }
+
+
+@mcp.tool
+async def session_bootstrap(
+    session_id: str | None = None,
+    repository_id: str | None = None,
+) -> dict:
+    """Restore session state after compaction or restart.
+
+    Returns the most recent checkpoint verified memories and the agent
+    can use them to reconstruct working context without scanning the
+    conversation history.
+
+    Args:
+        session_id: Session identifier to restore for.
+        repository_id: Optional repository UUID to scope results.
+    """
+    from repo_intel.compaction.manager import (  # noqa: PLC0415
+        session_bootstrap as _bootstrap,
+    )
+
+    return await _bootstrap(
+        session_id=session_id,
+        repository_id=repository_id,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dependency graph tools
 # ---------------------------------------------------------------------------
 

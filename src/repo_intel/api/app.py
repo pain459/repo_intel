@@ -8,11 +8,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from repo_intel.compaction.manager import AutoCheckpointScheduler
 from repo_intel.config import get_settings, setup_logging
 from repo_intel.db import models
 from repo_intel.db.session import close_engine, get_engine
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Global auto-checkpoint scheduler (started in lifespan)
+# ---------------------------------------------------------------------------
+_auto_scheduler: AutoCheckpointScheduler | None = None
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -25,10 +31,17 @@ async def db_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     setup_logging()
     _ = get_engine()  # triggers lazy engine creation
+    _auto_scheduler = AutoCheckpointScheduler()
+    _auto_scheduler.start()
     logger.info("Application starting (host=%s, port=%s)", settings.host, settings.port)
-    yield
-    await close_engine()
-    logger.info("Application shutting down")
+    try:
+        yield
+    finally:
+        if _auto_scheduler is not None:
+            _auto_scheduler.stop()
+            logger.info("Auto-checkpoint scheduler stopped")
+        await close_engine()
+        logger.info("Application shutting down")
 
 
 # ---------------------------------------------------------------------------
