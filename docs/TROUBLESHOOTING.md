@@ -90,7 +90,7 @@ docker compose exec api ls -la /workspace/
 
 ### "Repository path not found"
 
-The path in `--path` must exist inside the Docker container. Host paths are mounted via `compose.yaml` volumes. Verify:
+The path must exist inside the Docker container. Host paths are mounted via `compose.yaml` volumes. Verify:
 
 ```bash
 docker compose exec api ls /workspace/
@@ -215,10 +215,10 @@ docker compose exec api alembic history
 
 ```bash
 # Export before any destructive operation
-docker compose exec api repo-intel backup --destination /tmp/backup.sql
+docker compose exec api repo-intel backup --output /tmp
 
 # Restore from backup
-docker compose exec api repo-intel restore --source /tmp/backup.sql
+docker compose exec api repo-intel restore /tmp/repo_intel_db_TIMESTAMP.sql.gz --yes
 ```
 
 ---

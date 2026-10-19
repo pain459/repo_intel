@@ -13,7 +13,7 @@
 
 - **Indexes** local Git repositories → searchable chunks in PostgreSQL + pgvector
 - **Hybrid search**: exact match + full-text + semantic vector + symbol lookup (4-way RRF fusion)
-- **MCP tools**: 17 tools exposed to coding agents (OpenCode) for on-demand retrieval
+- **MCP tools**: 14 tools exposed to coding agents (OpenCode) for on-demand retrieval
 - **Agent memory**: evidence-backed decisions, preferences, and observations with lifecycle management
 - **Session checkpoints**: persist and restore work-in-progress across agent sessions
 - **Compaction continuity**: survive context compaction with auto-checkpointing and session bootstrap

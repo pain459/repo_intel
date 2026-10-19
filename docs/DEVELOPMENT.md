@@ -29,7 +29,7 @@ Architecture overview, technology stack, and development workflow for repo_intel
 | Worker | Custom async loop | Background repository indexing, stale chunk cleanup, index refresh |
 | Database | PostgreSQL 16 + pgvector | Stores chunks, embeddings, symbols, memory, checkpoints, dependencies |
 | Embeddings | Ollama (`nomic-embed-text`) | Vector embeddings for semantic search |
-| MCP | fastmcp | 17 tools exposed to coding agents via JSON-RPC 2.0 |
+| MCP | fastmcp | 14 tools exposed to coding agents via JSON-RPC 2.0 |
 | CLI | Typer + Rich | `repo-intel` command for admin operations |
 | Metrics | Prometheus client | Counters, histograms, gauges on `/metrics` |
 | Monitoring | Grafana + Prometheus | Dashboards at `http://localhost:3000` |
@@ -88,27 +88,24 @@ Each sub-search returns scored results. RRF fuses them into a single ranked list
 
 ---
 
-## MCP Tools (17 total)
+## MCP Tools (14 total)
 
 | Tool | Purpose |
 |------|---------|
+| `repo_list` | List registered repositories |
 | `repo_search` | Hybrid search across indexed repos |
 | `repo_symbol` | Find symbol definitions by name |
+| `repo_context` | Build a curated evidence pack for a task |
 | `repo_dependencies` | Traverse dependency graph |
-| `repo_list` | List registered repositories |
-| `repo_status` | Indexing status of repositories |
-| `memory_record` / `memory_search` | Agent memory CRUD and search |
-| `session_checkpoint` / `session_bootstrap` | Session state persistence |
+| `index_status` | Detailed index state for a repo |
+| `memory_write` | Save a decision, preference, or observation |
+| `memory_record` | (alias for memory_write) |
+| `memory_search` | Search saved memories |
+| `checkpoint_save` | Save progress for later resumption |
 | `checkpoint_get` | Retrieve latest checkpoint |
-| `index_status` | Detailed index state |
-| `repo_intel.index_status` | (alias) index status |
-| `repo_intel.repo_list` | (alias) list repos |
-| `repo_intel.repo_search` | (alias) hybrid search |
-| `repo_intel.session_bootstrap` | (alias) session bootstrap |
-| `task_resume` | Resume from checkpoint |
-| `memory_search` | Semantic search in agent memory |
-| `session_move` | Move session to another directory |
-| `worktree_create` / `worktree_list` / `worktree_remove` | Git worktree management |
+| `task_resume` | (alias for checkpoint_get) |
+| `compaction_checkpoint_save` | Checkpoint optimized for compaction recovery |
+| `session_bootstrap` | Full session restore after compaction |
 
 Tools are instrumented with Prometheus counters (success/error) and latency histograms.
 

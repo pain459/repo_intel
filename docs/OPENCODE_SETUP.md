@@ -1,6 +1,6 @@
 # OpenCode Setup Guide
 
-How to connect OpenCode to repo_intel so the agent can use all 17 MCP tools in Code Mode.
+How to connect OpenCode to repo_intel so the agent can use all MCP tools in Code Mode.
 
 ---
 
@@ -115,7 +115,7 @@ And restart OpenCode.
 
 ## 3. Available MCP Tools
 
-Once connected, 17 tools are available. All are prefixed `tools.repo_intel.` in Code Mode.
+Once connected, 14 tools are available. All are prefixed `tools.repo_intel.` in Code Mode.
 
 ### Search & Retrieval
 
