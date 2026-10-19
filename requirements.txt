@@ -1,6 +1,7 @@
 # repo_intel runtime dependencies
 # Managed from pyproject.toml; this file is pip-installable for dev convenience.
 fastapi>=0.115,<1
+fastmcp>=2.3.1,<3
 uvicorn[standard]>=0.32,<1
 pydantic>=2.10,<3
 pydantic-settings>=2.6,<3

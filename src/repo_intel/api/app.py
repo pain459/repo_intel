@@ -1,4 +1,4 @@
-"""FastAPI application factory with lifespan events."""
+"""FastAPI application factory with lifespan events and MCP server."""
 
 from __future__ import annotations
 
@@ -14,10 +14,14 @@ from repo_intel.db.session import close_engine, get_engine
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Lifespan: set up and tear down the DB engine."""
+async def db_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Set up and tear down the DB engine."""
     settings = get_settings()
     setup_logging()
     _ = get_engine()  # triggers lazy engine creation
@@ -27,16 +31,43 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Application shutting down")
 
 
+# ---------------------------------------------------------------------------
+# App factory — mounts MCP server alongside REST endpoints
+# ---------------------------------------------------------------------------
+
+
 def create_app() -> FastAPI:
     """Build and return the FastAPI application instance."""
+    # --- Create the MCP ASGI app ---
+    from repo_intel.mcp.fastmcp import get_mcp_app  # noqa: PLC0415
+
+    mcp_app_instance = get_mcp_app()
+    mcp_lifespan_cm = mcp_app_instance.lifespan(mcp_app_instance)
+
+    @asynccontextmanager
+    async def combined_lifespan(fastapi_app: FastAPI) -> AsyncGenerator[None, None]:
+        """Run both DB and FastMCP lifespans."""
+        db_cm = db_lifespan(fastapi_app)
+        await mcp_lifespan_cm.__aenter__()
+        await db_cm.__aenter__()
+        try:
+            yield
+        finally:
+            await db_cm.__aexit__(None, None, None)
+            await mcp_lifespan_cm.__aexit__(None, None, None)
+
     app = FastAPI(
         title="repo_intel",
         description="Persistent, searchable knowledge of Git repositories for coding agents.",
         version=getattr(models.Base.metadata, "version", "0.1.0"),
-        lifespan=lifespan,
+        lifespan=combined_lifespan,
     )
 
-    # --- Register routers ---
+    # --- Mount MCP server at /mcp (for OpenCode and MCP clients) ---
+    app.mount("/mcp", mcp_app_instance)
+    logger.info("MCP server mounted at /mcp")
+
+    # --- Register REST routers ---
     from repo_intel.api.checkpoints import router as cp_router  # noqa: PLC0415
     from repo_intel.api.health import health_router  # noqa: PLC0415
     from repo_intel.api.memory import router as memory_router  # noqa: PLC0415
