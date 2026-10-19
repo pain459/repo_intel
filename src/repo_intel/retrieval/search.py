@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,9 @@ _CHARS_PER_TOKEN = 4
 
 # How many candidates each sub-search may return
 _CANDIDATE_LIMIT = 100
+
+# Staleness threshold: if index is older than this, mark results as potentially stale
+_STALE_THRESHOLD_SECONDS = 3600  # 1 hour
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +45,22 @@ async def _get_active_generation_ids(
         gen_stmt = gen_stmt.where(IndexGeneration.repository_id == repository_id)
     rows = await session.scalars(gen_stmt)
     return [str(gid) for gid in rows]
+
+
+async def _get_generation_created_at(
+    session: AsyncSession,
+    generation_id: str,
+) -> str:
+    """Return the created_at timestamp string for a generation."""
+    import uuid as _uuid  # noqa: PLC0415
+    try:
+        gid = str(_uuid.UUID(generation_id))
+    except (ValueError, AttributeError):
+        gid = generation_id
+    gen = await session.get(IndexGeneration, gid)
+    if gen and gen.created_at:
+        return str(gen.created_at)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +254,7 @@ async def _fetch_chunk_details(
             Chunk.content_hash,
             Chunk.content,
             Chunk.estimated_tokens,
+            Chunk.generation_id,
         )
         .join(FileRecord, Chunk.file_id == FileRecord.id)
         .where(Chunk.id.in_(chunk_ids))
@@ -248,6 +269,7 @@ async def _fetch_chunk_details(
         content_hash,
         content,
         estimated_tokens,
+        generation_id,
     ) in rows:
         cid = str(chunk_id)
         results[cid] = SearchResult(
@@ -259,6 +281,8 @@ async def _fetch_chunk_details(
             text=content or "",
             estimated_tokens=estimated_tokens or 0,
         )
+        # Store the generation_id for freshness lookup later (as string)
+        results[cid].generation_id = str(generation_id)  # type: ignore[attr-defined]
 
     return results
 
@@ -306,8 +330,11 @@ async def hybrid_search(
     2. Run exact, lexical (FTS), and semantic (vector) candidate retrieval
     3. Fuse via reciprocal rank fusion
     4. Fetch full chunk details for top-ranked hits
-    5. Apply token budget and return results
+    5. Populate freshness metadata
+    6. Apply token budget and return results
     """
+    from datetime import datetime  # noqa: PLC0415
+
     # 1. Resolve active generations
     generation_ids = await _get_active_generation_ids(session, request.repository_id)
 
@@ -353,10 +380,29 @@ async def hybrid_search(
         detail.relevance_reason = _build_reason(methods)
         results.append(detail)
 
-    # 6. Apply token budget
+    # 6. Populate freshness metadata
+    now = datetime.now(UTC)
+    for r in results:
+        gid = r.generation_id
+        if gid:
+            created_at_str = await _get_generation_created_at(session, gid)
+            r.generation_created_at = created_at_str
+            if created_at_str:
+                try:
+                    created_at = datetime.fromisoformat(
+                        created_at_str.replace("Z", "+00:00")
+                    )
+                    age_seconds = (now - created_at).total_seconds()
+                    r.is_stale = age_seconds > _STALE_THRESHOLD_SECONDS
+                except (ValueError, TypeError):
+                    r.is_stale = False
+        else:
+            r.is_stale = False
+
+    # 7. Apply token budget
     results = _apply_token_budget(results, request.token_budget)
 
-    # 7. Apply minimum score filter
+    # 8. Apply minimum score filter
     if request.min_score > 0:
         max_score = 3.0 / (_RRF_K + 1)
         results = [

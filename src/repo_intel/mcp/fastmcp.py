@@ -129,6 +129,8 @@ async def repo_search(
                 "text": r.text[:2000],
                 "retrieval_methods": r.retrieval_methods,
                 "score": round(r.score, 6),
+                "generation_created_at": r.generation_created_at,
+                "is_stale": r.is_stale,
             }
             for r in results
         ],
@@ -226,6 +228,8 @@ async def repo_context(
                 "content_hash": r.content_hash,
                 "text": r.text,
                 "retrieval_methods": r.retrieval_methods,
+                "generation_created_at": r.generation_created_at,
+                "is_stale": r.is_stale,
             }
             for r in results
         ],
@@ -313,6 +317,7 @@ async def memory_write(
     repository_id: str | None = None,
     evidence: dict | None = None,
     source_commit: str | None = None,
+    author: str | None = None,
 ) -> dict:
     """Write a new agent memory (preference, observation, or instruction).
 
@@ -325,6 +330,7 @@ async def memory_write(
         repository_id: Optional repository UUID to scope the memory to.
         evidence: Optional supporting evidence dictionary.
         source_commit: Optional git commit hash that supports this memory.
+        author: Optional creator label (session ID, agent name, etc.).
     """
     from sqlalchemy import select  # noqa: PLC0415
 
@@ -348,6 +354,7 @@ async def memory_write(
             status="candidate",
             evidence=evidence,
             source_commit=source_commit,
+            author=author,
         )
         session.add(memory)
         await session.commit()

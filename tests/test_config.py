@@ -4,7 +4,7 @@ from repo_intel.config import Settings
 
 def test_settings_defaults():
     s = Settings()
-    assert s.host == "0.0.0.0"
+    assert s.host == "127.0.0.1"
     assert s.port == 8765
     assert s.profile in ("local", "remote-ollama")
 

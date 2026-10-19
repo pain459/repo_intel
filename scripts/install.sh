@@ -100,4 +100,32 @@ if [[ $DOCTOR_EXIT -ne 0 ]]; then
   exit 1
 fi
 
+# ---------- MCP connectivity ----------
+info "Testing MCP endpoint connectivity..."
+MCP_OK=false
+MCP_DETAIL="N/A"
+for attempt in 1 2 3; do
+  if docker compose exec -T api curl -sf http://127.0.0.1:8765/mcp 2>/dev/null | grep -q "repo_intel"; then
+    MCP_OK=true
+    MCP_DETAIL="ok"
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$MCP_OK" != "true" ]]; then
+  red "MCP endpoint not responding — check API container logs."
+  exit 1
+fi
+green "MCP endpoint reachable"
+
+# ---------- summary ----------
 green "=== install complete ==="
+info "Next steps:"
+info "  1. Register a repo:  docker compose exec api repo-intel repo add /workspace"
+info "  2. Index it:        docker compose exec api repo-intel index"
+info "  3. Check status:    docker compose exec api repo-intel status"
+info ""
+info "Backup:   ./scripts/backup.sh"
+info "Restore:  ./scripts/restore.sh <backup.sql.gz>"
+info "Uninstall: ./scripts/uninstall.sh [--keep-data]"

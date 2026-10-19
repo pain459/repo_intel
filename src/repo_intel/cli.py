@@ -444,14 +444,13 @@ def search(
     limit: int = typer.Option(10, "--limit", "-n", help="Maximum results", min=1, max=100),
 ) -> None:
     """Search indexed repositories (hybrid: exact + FTS + vector)."""
-    from rich.markdown import Markdown as RichMarkdown  # noqa: PLC0415
 
-    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
-    from repo_intel.retrieval.search import hybrid_search  # noqa: PLC0415
-    from repo_intel.retrieval.types import SearchRequest  # noqa: PLC0415
     from sqlalchemy import select  # noqa: PLC0415
 
     from repo_intel.db.models import Repository  # noqa: PLC0415
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+    from repo_intel.retrieval.search import hybrid_search  # noqa: PLC0415
+    from repo_intel.retrieval.types import SearchRequest  # noqa: PLC0415
 
     repo_id = None
     if repo_path:
@@ -576,6 +575,197 @@ def status() -> None:
             console.print(table)
 
     asyncio.run(_do_status())
+
+
+# ------------------------------------------------------------------
+# repo remove
+# ------------------------------------------------------------------
+@repo_cli.command("remove")
+def repo_remove(
+    repo_id: str = typer.Argument(..., help="UUID of the repository to remove"),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation prompt"
+    ),
+) -> None:
+    """Remove a repository and all its index data."""
+    if not yes:
+        confirm = typer.confirm(
+            "This will delete the repository index and all chunks. Continue?"
+        )
+        if not confirm:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(0)
+
+    import uuid as _uuid  # noqa: PLC0415
+
+    try:
+        target_id = _uuid.UUID(repo_id)
+    except ValueError:
+        console.print(f"[bold red]Error:[/bold red] Invalid UUID: {repo_id}")
+        raise typer.Exit(1)
+
+    from sqlalchemy import delete, select  # noqa: PLC0415
+
+    from repo_intel.db.models import (
+        Chunk,
+        FileRecord,
+        IndexGeneration,
+        IndexJob,
+        Repository,
+    )
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+
+    async def _do_remove() -> None:
+        async with get_session_factory()() as session:
+            repo = (
+                await session.scalars(
+                    select(Repository).where(Repository.id == target_id)
+                )
+            ).first()
+            if not repo:
+                console.print(f"[bold red]Error:[/bold red] Repository not found: {repo_id}")
+                return
+
+            repo_name = repo.name
+
+            # Delete in correct order to respect foreign keys
+            gen_stmt = (
+                select(IndexGeneration.id)
+                .where(IndexGeneration.repository_id == target_id)
+            )
+            gen_ids = [str(g) for g in (await session.scalars(gen_stmt)).all()]
+
+            if gen_ids:
+                await session.execute(
+                    delete(Chunk).where(Chunk.generation_id.in_(gen_ids))
+                )
+
+            await session.execute(
+                delete(IndexGeneration).where(
+                    IndexGeneration.repository_id == target_id
+                )
+            )
+            await session.execute(
+                delete(FileRecord).where(FileRecord.repository_id == target_id)
+            )
+            await session.execute(
+                delete(IndexJob).where(IndexJob.repository_id == target_id)
+            )
+            await session.execute(
+                delete(Repository).where(Repository.id == target_id)
+            )
+            await session.commit()
+
+            console.print(
+                f"[bold green]Removed:[/bold green] [cyan]{repo_name}[/cyan]"
+            )
+
+    asyncio.run(_do_remove())
+
+
+# ------------------------------------------------------------------
+# backup
+# ------------------------------------------------------------------
+@cli.command()
+def backup(
+    output_dir: str | None = typer.Option(
+        None, "--output", "-o", help="Directory to store backup (default: ./backups)"
+    ),
+) -> None:
+    """Dump the PostgreSQL database to a compressed SQL file."""
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    backup_dir = output_dir or os.path.join(os.getcwd(), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+
+    from datetime import datetime  # noqa: PLC0415
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join(backup_dir, f"repo_intel_db_{timestamp}.sql.gz")
+
+    console.print(f"Backing up to [cyan]{file_path}[/cyan]...")
+
+    try:
+        subprocess.run(
+            [
+                "docker", "compose", "exec", "-T", "postgres",
+                "pg_dump", "-U", "repo_intel", "repo_intel",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        console.print(f"[bold red]Backup failed:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+    # Compress
+    import gzip  # noqa: PLC0415
+
+    try:
+        result = subprocess.run(
+            [
+                "docker", "compose", "exec", "-T", "postgres",
+                "pg_dump", "-U", "repo_intel", "repo_intel",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        with gzip.open(file_path, "wb") as f:
+            f.write(result.stdout)
+        console.print(f"[bold green]Backup saved:[/bold green] {file_path}")
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        console.print(f"[bold red]Backup failed:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+
+# ------------------------------------------------------------------
+# restore
+# ------------------------------------------------------------------
+@cli.command()
+def restore(
+    backup_file: str = typer.Argument(..., help="Path to the .sql.gz backup file"),
+    yes: bool = typer.Option(
+        False, "--yes", "-y",
+        help="Skip confirmation prompt (WARNING: overwrites existing data)",
+    ),
+) -> None:
+    """Restore the PostgreSQL database from a .sql.gz backup file."""
+    import gzip  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    if not os.path.isfile(backup_file):
+        console.print(f"[bold red]Error:[/bold red] File not found: {backup_file}")
+        raise typer.Exit(1)
+
+    if not yes:
+        confirm = typer.confirm(
+            "This will overwrite the current database. Continue?"
+        )
+        if not confirm:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(0)
+
+    console.print(f"Restoring from [cyan]{backup_file}[/cyan]...")
+
+    try:
+        with gzip.open(backup_file, "rb") as f:
+            sql_data = f.read()
+
+        subprocess.run(
+            [
+                "docker", "compose", "exec", "-T", "postgres",
+                "psql", "-U", "repo_intel", "repo_intel",
+            ],
+            input=sql_data,
+            check=True,
+            capture_output=True,
+        )
+        console.print("[bold green]Restore complete.[/bold green]")
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        console.print(f"[bold red]Restore failed:[/bold red] {exc}")
+        raise typer.Exit(1)
 
 
 # --- Run from command line ---

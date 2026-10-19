@@ -9,7 +9,6 @@ import uuid
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from repo_intel.config import get_settings
 from repo_intel.db.models import (
     Chunk,
     FileRecord,
@@ -54,6 +53,7 @@ async def scan_repository(
         state="building",
         embedding_model=settings.embedding_model,
         embedding_dimension=768,  # nomic-embed-text
+        chunker_version="1.0.0",  # current chunker version for reproducibility
     )
     session.add(generation)
     await session.flush()

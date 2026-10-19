@@ -23,6 +23,11 @@ class SearchResult:
     retrieval_methods: list[SearchMethod] = field(default_factory=list)
     score: float = 0.0
     relevance_reason: str = ""
+    # Index freshness metadata
+    generation_created_at: str = ""
+    is_stale: bool = False
+    # Internal: generation ID for freshness lookup (not serialized to API)
+    generation_id: str = ""
 
 
 @dataclass

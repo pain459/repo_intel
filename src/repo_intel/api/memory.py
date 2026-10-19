@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import uuid
-
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
-from repo_intel.db.session import get_session_factory
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 
 from repo_intel.db.models import Memory, Repository
+from repo_intel.db.session import get_session_factory
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -44,6 +41,13 @@ class MemoryCreate(BaseModel):
     )
     source_commit: str | None = Field(
         None, description="Git commit hash that prompted this memory"
+    )
+    author: str | None = Field(
+        None, description="Creator: session ID, agent name, or user"
+    )
+    expiry_time: str | None = Field(
+        None,
+        description="ISO-8601 timestamp after which the memory should be re-evaluated",
     )
 
 
@@ -87,6 +91,8 @@ async def create_memory(body: MemoryCreate) -> MemoryOut:
             status="candidate",
             evidence=body.evidence,
             source_commit=body.source_commit,
+            author=body.author,
+            expiry_time=body.expiry_time,
         )
         session.add(memory)
         await session.commit()

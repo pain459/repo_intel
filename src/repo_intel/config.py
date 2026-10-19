@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     profile: Literal["local", "remote-ollama"] = "remote-ollama"
 
-    host: str = Field(default="0.0.0.0", description="Bind address")
+    host: str = Field(default="127.0.0.1", description="Bind address (loopback by default)")
     port: int = Field(default=8765, ge=1, le=65535)
 
     # ------------------------------------------------------------------

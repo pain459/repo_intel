@@ -82,6 +82,8 @@ class IndexGeneration(Base, TimestampMixin):
     embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     embedding_version: Mapped[str | None] = mapped_column(String(255), nullable=True)
     embedding_dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Chunker/parser version for reproducibility
+    chunker_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # How many chunks in this generation
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -121,6 +123,9 @@ class FileRecord(Base, TimestampMixin):
 
 class Chunk(Base, TimestampMixin):
     __tablename__ = "chunks"
+    __table_args__ = (
+        UniqueConstraint("generation_id", "content_hash", name="uq_gen_chunk_content"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id"), nullable=False)
@@ -203,11 +208,20 @@ class RetrievalEvent(Base, TimestampMixin):
     repository_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("repositories.id"), nullable=True,
     )
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     query: Mapped[str] = mapped_column(Text, nullable=False)
     num_results: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     token_budget: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_tokens_returned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Which index generation served this query
+    generation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True,
+    )
+    # Selected chunk IDs for audit trail
+    selected_chunk_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # How many stale chunks appeared in results
+    stale_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +242,12 @@ class Memory(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="candidate")
     evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     source_commit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Who/what created this memory (agent session, user CLI, etc.)
+    author: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # When to re-evaluate this memory
+    expiry_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
 
 # ---------------------------------------------------------------------------

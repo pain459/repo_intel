@@ -56,10 +56,6 @@ async def register_repository(body: RepositoryCreate) -> IndexTriggerOut:
         raise HTTPException(400, f"Not a directory: {resolved}")
 
     # Security: reject paths with traversal components
-    from repo_intel.security.paths import (  # noqa: PLC0415
-        is_safe_relative_path,
-        resolve_safe,
-    )
 
     # Validate the resolved path doesn't contain traversal sequences
     try:
@@ -238,3 +234,58 @@ async def trigger_index(repo_id: uuid.UUID) -> IndexTriggerOut:
         job_id=job.id,
         message=f"Re-index job queued for {repo.name}",
     )
+
+
+@router.delete("/{repo_id}", status_code=200)
+async def delete_repository(repo_id: uuid.UUID) -> dict:
+    """Unregister a repository and delete its index data."""
+    from sqlalchemy import delete, select  # noqa: PLC0415
+
+    from repo_intel.db.models import (
+        Chunk,
+        FileRecord,
+        IndexGeneration,
+        IndexJob,
+        Repository,
+    )
+    from repo_intel.db.session import get_session_factory
+
+    async with get_session_factory()() as session:
+        repo = (
+            await session.scalars(
+                select(Repository).where(Repository.id == repo_id)
+            )
+        ).first()
+        if not repo:
+            raise HTTPException(404, "Repository not found")
+
+        repo_name = repo.name
+
+        # Delete in correct order to respect foreign keys
+        # Find active generations and get their chunk IDs
+        gen_stmt = (
+            select(IndexGeneration.id)
+            .where(IndexGeneration.repository_id == repo_id)
+        )
+        gen_ids = [str(g) for g in (await session.scalars(gen_stmt)).all()]
+
+        if gen_ids:
+            await session.execute(
+                delete(Chunk).where(Chunk.generation_id.in_(gen_ids))
+            )
+
+        await session.execute(delete(IndexGeneration).where(
+            IndexGeneration.repository_id == repo_id
+        ))
+        await session.execute(delete(FileRecord).where(
+            FileRecord.repository_id == repo_id
+        ))
+        await session.execute(delete(IndexJob).where(
+            IndexJob.repository_id == repo_id
+        ))
+        await session.execute(delete(Repository).where(
+            Repository.id == repo_id
+        ))
+        await session.commit()
+
+    return {"message": f"Repository '{repo_name}' and its index data deleted"}
