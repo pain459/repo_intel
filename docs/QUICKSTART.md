@@ -50,13 +50,14 @@ curl http://localhost:8765/health/ready  # {"status":"ok","database":"ok","ollam
 
 ## 3. Register a Repository
 
-The path is **inside the container**. Your host repos are mounted via `compose.yaml` volumes.
+Every repo you want indexed must be **mounted into the containers** first, then **registered** in the database.
 
-### Mount Your Repo
+### Step 1 — Mount the repo in Docker
 
-If `FLOW` lives at `/Users/ravik/src_git/FLOW` on your Mac, add a volume to `compose.yaml` under the `api` and `worker` services:
+Edit `compose.yaml`. Under the `api` service (and `worker` if you want the worker to see it too), add a volume:
 
 ```yaml
+# compose.yaml, under services.api.volumes
 volumes:
   - /Users/ravik/src_git/FLOW:/repos/FLOW:ro
 ```
@@ -67,7 +68,13 @@ Then restart:
 docker compose up -d
 ```
 
-### Register It
+Verify the path is visible inside the container:
+
+```bash
+docker compose exec api ls /repos/FLOW
+```
+
+### Step 2 — Register it
 
 ```bash
 docker compose exec api repo-intel repo add --name "FLOW" /repos/FLOW
@@ -75,43 +82,110 @@ docker compose exec api repo-intel repo add --name "FLOW" /repos/FLOW
 
 `--name` is optional — without it, repo_intel uses the directory basename.
 
-### List Registered Repos
+### Step 3 — List registered repos
 
 ```bash
 docker compose exec api repo-intel repo list
 ```
 
-### Remove a Repository (if needed)
+This shows name, path, status, chunk count, last job status, and file count for every registered repo.
 
-```bash
-docker compose exec api repo-intel repo remove <uuid> --yes
+### Register more repos
+
+Repeat the mount + register steps for each repo. For example, to add a second repo called `rea`:
+
+```yaml
+# compose.yaml
+- /Users/ravik/src_git/rea:/repos/rea:ro
 ```
 
-Get the UUID from the `repo list` output.
+```bash
+docker compose exec api repo-intel repo add --name "rea" /repos/rea
+```
 
 ---
 
-## 4. Run the First Index
+## 4. How Indexing Works
+
+repo_intel has **two indexing modes**: automatic (via the worker) and manual (via CLI).
+
+### Automatic Indexing (default)
+
+The `worker` container polls every 10 seconds (configurable via `INDEX_POLL_SECONDS` in `.env`). Each tick:
+
+1. Picks up pending index jobs from the database
+2. Compares file content hashes against what's already indexed
+3. If **any file changed, was added, or was deleted**, it queues a full re-index for that repo
+4. Runs the scan: discovers files, chunks them, generates embeddings, stores symbols
+
+You don't need to do anything — just register the repo and the worker picks it up.
+
+### Manual Indexing
+
+To trigger an index immediately without waiting for the worker:
 
 ```bash
 # Index a specific repo
 docker compose exec api repo-intel index --repo-path /repos/FLOW
 
-# Or index everything
+# Index all registered repos
 docker compose exec api repo-intel index
 ```
 
-Or let the worker pick it up automatically (polls every 10 seconds).
+### What gets indexed
 
-### Check Progress
+- **Chunks**: source code split into searchable blocks with pgvector embeddings
+- **Symbols**: functions, classes, variables detected from source
+- **Dependencies**: heuristic edges (imports, calls) between symbols
+- **File records**: one row per file with content hash for change detection
+
+---
+
+## 5. Check Index Status
+
+### Overall status (all repos)
 
 ```bash
 docker compose exec api repo-intel status
 ```
 
+Shows a table with name, path, status, file count, and chunk count.
+
+### Detailed status for one repo (MCP tool)
+
+```python
+tools.repo_intel["index_status"](repository_id="<uuid>")
+```
+
+Returns the active generation (chunk count, embedding model, timestamp) and the last job (type, status, any error).
+
+### Check worker activity
+
+```bash
+# Is the worker running?
+docker compose ps worker
+
+# Watch worker logs
+docker compose logs -f worker | tail -50
+```
+
+The worker prints tick counts every 10 ticks. If ticks are increasing, it's processing.
+
+### Check indexed symbols
+
+```bash
+# Count symbols in the database
+docker compose exec api psql -U repo_intel -d repo_intel -c \
+  "SELECT count(*) FROM symbols;"
+
+# List symbols for a specific repo
+docker compose exec api psql -U repo_intel -d repo_intel -c \
+  "SELECT s.name, s.kind, f.relative_path FROM symbols s JOIN file_records f ON s.file_id = f.id WHERE f.repository_id = '<uuid>' LIMIT 20;"
+```
+
 ---
 
-## 5. Search
+## 6. Search
 
 The query is a **positional argument**. Use `--repo-path` to scope to a repo.
 
@@ -136,32 +210,126 @@ curl -X POST http://localhost:8765/search \
 
 ---
 
-## 6. Run Diagnostics
+## 7. What to Do If Indexing Doesn't Work
+
+### Symptom: repo stays `registered`, never `indexed`
 
 ```bash
-docker compose exec api repo-intel doctor
+# 1. Is the worker running?
+docker compose ps worker
+
+# 2. Are there errors in worker logs?
+docker compose logs worker | tail -30
+
+# 3. Is the repo path accessible inside the container?
+docker compose exec api ls /repos/FLOW
 ```
 
-Checks database, Ollama connectivity, environment config. All should pass.
+### Symptom: index command finishes but chunk count is 0
+
+```bash
+# 1. Check if any jobs are stuck
+docker compose exec api psql -U repo_intel -d repo_intel -c \
+  "SELECT id, repository_id, status, error_summary FROM index_jobs ORDER BY created_at DESC LIMIT 10;"
+
+# 2. Check Ollama is reachable (needed for embeddings)
+curl http://localhost:8765/health/ready
+
+# 3. Re-index manually
+docker compose exec api repo-intel index --repo-path /repos/FLOW
+```
+
+### Symptom: worker crashed or stuck
+
+```bash
+# Rebuild and restart
+docker compose up -d --build
+
+# Or force-restart just the worker
+docker compose restart worker
+```
+
+### Symptom: files changed but index didn't update
+
+The worker detects changes by comparing content hashes. If the file changed on disk but the hash matches (e.g., whitespace-only change saved as identical), it won't re-index. Force it:
+
+```bash
+docker compose exec api repo-intel index --repo-path /repos/FLOW
+```
+
+### Symptom: search returns zero results
+
+```bash
+# 1. Is the repo indexed at all?
+docker compose exec api repo-intel status
+
+# 2. Check chunk count in DB
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*) FROM chunks;"
+
+# 3. Try a very simple query
+docker compose exec api repo-intel search "import"
+
+# 4. Check for stale chunks (indexed but source file changed)
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*), stale FROM chunks GROUP BY stale;"
+```
 
 ---
 
-## 7. Run the Benchmark
+## 8. Remove a Repository
 
 ```bash
-# All repos
-docker compose exec api repo-intel benchmark
+# First, see the UUID
+docker compose exec api repo-intel repo list
 
-# Specific repo
-docker compose exec api repo-intel benchmark --repository-id <uuid>
+# Remove it (deletes the repo record, all chunks, symbols, and jobs)
+docker compose exec api repo-intel repo remove <uuid> --yes
+```
+
+Without `--yes`, it prompts for confirmation. This deletes all indexed data for that repo but leaves the other repos and PostgreSQL intact.
+
+---
+
+## 9. Clean Start (Delete Everything)
+
+If you want to wipe all data and start from scratch:
+
+```bash
+# 1. Stop containers
+docker compose down
+
+# 2. Remove all volumes (⚠️ destroys all indexed data)
+docker volume rm repo_intel_pgdata repo_intel_promdata repo_intel_grafanadata 2>/dev/null || true
+
+# 3. Rebuild fresh
+docker compose up -d --build
+
+# 4. Run migrations
+docker compose exec api alembic upgrade head
+
+# 5. Verify clean state
+docker compose exec api repo-intel repo list  # shows "No repositories registered yet"
+
+# 6. Register repos again
+docker compose exec api repo-intel repo add --name "FLOW" /repos/FLOW
+```
+
+### Partial reset (keep some data)
+
+Remove just the database volume, keep Prometheus and Grafana:
+
+```bash
+docker compose down
+docker volume rm repo_intel_pgdata
+docker compose up -d
+docker compose exec api alembic upgrade head
 ```
 
 ---
 
-## 8. Backup and Restore
+## 10. Backup and Restore
 
 ```bash
-# Create a backup (saved to ./backups/)
+# Create a backup (saved to ./backups/ inside the container)
 docker compose exec api repo-intel backup
 
 # Custom output directory
@@ -171,11 +339,35 @@ docker compose exec api repo-intel backup --output /tmp/backups
 docker compose exec api repo-intel restore /path/to/repo_intel_db_20260101_120000.sql.gz --yes
 ```
 
+Backup before any destructive operation (volume removal, migration rollback, etc.).
+
 ---
 
-## 9. Configure OpenCode MCP
+## 11. Run Diagnostics
 
-Generate the OpenCode MCP config automatically:
+```bash
+docker compose exec api repo-intel doctor
+```
+
+Checks: environment config, PostgreSQL connectivity, Ollama reachability, embedding model availability, DNS resolution.
+
+---
+
+## 12. Run the Benchmark
+
+```bash
+# All repos
+docker compose exec api repo-intel benchmark
+
+# Specific repo
+docker compose exec api repo-intel benchmark --repository-id <uuid>
+```
+
+Runs 10 predefined queries, reports recall, latency, and coverage.
+
+---
+
+## 13. Configure OpenCode MCP
 
 ```bash
 docker compose exec api repo-intel mcp configure --client opencode --transport sse
@@ -183,13 +375,15 @@ docker compose exec api repo-intel mcp configure --client opencode --transport s
 
 Prompts you to confirm, then writes to `~/.config/opencode/mcp.json`.
 
+See [OPENCODE_SETUP.md](OPENCODE_SETUP.md) for model configuration and all MCP tool examples.
+
 ---
 
-## 10. Verify with MCP Tools
+## 14. Quick MCP Verification
 
-Once OpenCode is configured (see [OPENCODE_SETUP.md](OPENCODE_SETUP.md)), test in Code Mode:
+Once OpenCode is configured, test in Code Mode:
 
-```
+```python
 # List repos
 tools.repo_intel["repo_list"]()
 
@@ -201,6 +395,9 @@ tools.repo_intel["repo_symbol"](symbol_name="authenticate_user")
 
 # Check index status
 tools.repo_intel["index_status"](repository_id="<uuid>")
+
+# Build a context pack
+tools.repo_intel["repo_context"](task_description="Add login retry logic", token_budget=12000)
 ```
 
 ---
