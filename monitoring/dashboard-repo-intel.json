@@ -8,178 +8,435 @@
   "liveNow": false,
   "panels": [
     {
-      "title": "Service Health",
+      "title": "Overview",
       "type": "row",
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1
     },
     {
-      "title": "Uptime",
+      "title": "Service Start Time",
+      "description": "When this API process launched",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "gridPos": { "h": 3, "w": 6, "x": 0, "y": 1 },
       "id": 2,
       "targets": [
-        { "expr": "process_start_time_seconds", "refId": "A" }
+        {
+          "expr": "process_start_time_seconds * 1000",
+          "legendFormat": "start",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "dateTimeAsIso",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null }
-          ]}
-        }
-      },
-      "options": { "reduceOptions": { "calcs": ["last"] } }
-    },
-    {
-      "title": "Open FDs",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
-      "id": 3,
-      "targets": [
-        { "expr": "process_open_fds", "refId": "A" }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "orange", "value": 500 },
-            { "color": "red", "value": 1000 }
-          ]}
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
       "title": "Resident Memory",
+      "description": "Process RSS — helps detect memory leaks",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
-      "id": 4,
+      "gridPos": { "h": 3, "w": 6, "x": 6, "y": 1 },
+      "id": 3,
       "targets": [
-        { "expr": "process_resident_memory_bytes / 1048576", "refId": "A" }
+        { "expr": "process_resident_memory_bytes", "legendFormat": "RSS", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "orange", "value": 1073741824 },
-            { "color": "red", "value": 2147483648 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1073741824 },
+              { "color": "red", "value": 2147483648 }
+            ]
+          }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
-      "title": "CPU Seconds",
+      "title": "Open File Descriptors",
+      "description": "Open FDs — high counts can indicate connection / file handle leaks",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
-      "id": 5,
+      "gridPos": { "h": 3, "w": 6, "x": 12, "y": 1 },
+      "id": 4,
       "targets": [
-        { "expr": "rate(process_cpu_seconds_total[5m]) * 100", "refId": "A" }
+        { "expr": "process_open_fds", "legendFormat": "FDs", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "orange", "value": 50 },
-            { "color": "red", "value": 80 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 500 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
-      "title": "Search Performance",
+      "title": "DB Pool Used",
+      "description": "Active connections from the pool. Pool size = 5, max overflow = 10",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 6, "x": 18, "y": 1 },
+      "id": 5,
+      "targets": [
+        { "expr": "repo_intel_db_pool_used", "legendFormat": "used", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 4 },
+              { "color": "red", "value": 14 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "title": "HTTP Traffic",
       "type": "row",
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
-      "id": 6
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "id": 10
+    },
+    {
+      "title": "Request Rate (req/min)",
+      "description": "Total HTTP requests per minute across all endpoints (excludes /metrics and /health)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 5 },
+      "id": 11,
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[5m])) * 60",
+          "legendFormat": "req/min",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "title": "P95 Latency",
+      "description": "95th percentile HTTP request latency across all endpoints",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 5 },
+      "id": 12,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 2.0 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "title": "P99 Latency",
+      "description": "99th percentile HTTP request latency across all endpoints",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 5 },
+      "id": 13,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1.0 },
+              { "color": "red", "value": 5.0 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "title": "Requests Over Time",
+      "description": "HTTP request rate per minute, grouped by status class",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 14,
+      "targets": [
+        {
+          "expr": "sum by (status_class) (rate(http_requests_total[5m])) * 60",
+          "legendFormat": "{{status_class}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "color": {
+            "mode": "palette-classic",
+            "seriesBy": "last"
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "title": "Latency Percentiles",
+      "description": "HTTP request latency at p50 / p90 / p95 / p99 over time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 15,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p90",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "fixedColor": "blue",
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "title": "5xx / 4xx Response Rate",
+      "description": "Fraction of requests returning 5xx or 4xx status codes",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 17 },
+      "id": 30,
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status_class=\"5xx\"}[5m])) / (sum(rate(http_requests_total[5m])) or vector(1))",
+          "legendFormat": "5xx rate",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status_class=\"4xx\"}[5m])) / (sum(rate(http_requests_total[5m])) or vector(1))",
+          "legendFormat": "4xx rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "fixedColor": "red",
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "yaxes": [
+        { "min": 0, "max": 1 }
+      ]
+    },
+    {
+      "title": "In-Flight Requests",
+      "description": "Currently active HTTP requests being processed",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 17 },
+      "id": 31,
+      "targets": [
+        {
+          "expr": "sum by (endpoint) (http_requests_active)",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "req",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "title": "Search",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 20
     },
     {
       "title": "Search Requests / min",
+      "description": "Hybrid search requests per minute. Source = rest (REST API) or mcp (MCP tool calls)",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 7 },
-      "id": 7,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 24 },
+      "id": 21,
       "targets": [
-        { "expr": "rate(repo_intel_search_requests_total[5m]) * 60", "refId": "A" }
+        {
+          "expr": "sum(rate(repo_intel_search_requests_total[5m])) * 60",
+          "legendFormat": "total",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "blue", "value": null }
-          ]}
+          "unit": "reqpm",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
-      "title": "P95 Search Latency (s)",
+      "title": "Search P95 Latency",
+      "description": "End-to-end search latency at 95th percentile",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 7 },
-      "id": 8,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 24 },
+      "id": 22,
       "targets": [
         {
           "expr": "histogram_quantile(0.95, rate(repo_intel_search_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "orange", "value": 0.5 },
-            { "color": "red", "value": 1.0 }
-          ]}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 2.0 }
+            ]
+          }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
-      "title": "P99 Search Latency (s)",
+      "title": "Avg Results per Search",
+      "description": "Mean number of results returned per search query",
       "type": "stat",
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 7 },
-      "id": 9,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 24 },
+      "id": 23,
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(repo_intel_search_latency_seconds_bucket[5m]))",
+          "expr": "rate(repo_intel_search_results_count_sum[5m]) / (rate(repo_intel_search_results_count_count[5m]) or vector(1))",
+          "legendFormat": "avg",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "orange", "value": 1.0 },
-            { "color": "red", "value": 2.0 }
-          ]}
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] } }
+    },
+    {
+      "title": "Stale Results Rate",
+      "description": "Number of search results served from stale index (> 1h old)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 24 },
+      "id": 24,
+      "targets": [
+        {
+          "expr": "rate(repo_intel_search_stale_results_total[5m]) * 60",
+          "legendFormat": "stale/min",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
         }
       },
       "options": { "reduceOptions": { "calcs": ["last"] } }
     },
     {
       "title": "Search Requests Over Time",
+      "description": "Search request rate by source (REST API vs MCP tools)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
-      "id": 10,
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 28 },
+      "id": 25,
       "targets": [
         {
-          "expr": "sum(rate(repo_intel_search_requests_total[5m])) * 60",
-          "legendFormat": "req/min",
+          "expr": "sum by (source) (rate(repo_intel_search_requests_total[5m])) * 60",
+          "legendFormat": "{{source}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqpm" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqpm",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
       "title": "Search Latency Distribution",
+      "description": "Latency histogram for search queries at p50 / p90 / p95 / p99",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
-      "id": 11,
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 34 },
+      "id": 26,
       "targets": [
         {
           "expr": "histogram_quantile(0.50, rate(repo_intel_search_latency_seconds_bucket[5m]))",
@@ -202,89 +459,211 @@
           "refId": "D"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "title": "Indexing",
+      "title": "MCP Tool Calls",
       "type": "row",
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
-      "id": 12
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "id": 40
     },
     {
-      "title": "Chunks Indexed / min",
-      "type": "stat",
-      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 29 },
-      "id": 13,
+      "title": "Tool Calls / min",
+      "description": "Total MCP tool invocations per minute, by tool and success/error status",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 41 },
+      "id": 41,
       "targets": [
         {
-          "expr": "sum(rate(repo_intel_index_chunks_total[5m])) * 60",
+          "expr": "sum by (tool_name, status) (rate(mcp_tool_calls_total[5m])) * 60",
+          "legendFormat": "{{tool_name}} ({{status}})",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "purple", "value": null }
-          ]}
+          "unit": "reqpm",
+          "color": {
+            "mode": "palette-classic",
+            "seriesBy": "last"
+          }
         }
       },
-      "options": { "reduceOptions": { "calcs": ["last"] } }
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean"] } }
     },
     {
-      "title": "Total Chunks Indexed",
-      "type": "stat",
-      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 29 },
-      "id": 14,
+      "title": "Tool Call Error Rate",
+      "description": "Fraction of MCP tool calls that result in errors",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 48 },
+      "id": 42,
       "targets": [
-        { "expr": "sum(repo_intel_index_chunks_total)", "refId": "A" }
+        {
+          "expr": "sum(rate(mcp_tool_calls_total{status=\"error\"}[5m])) / (sum(rate(mcp_tool_calls_total[5m])) or vector(1))",
+          "legendFormat": "error rate",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "purple", "value": null }
-          ]}
+          "unit": "percentunit",
+          "color": { "fixedColor": "red" }
         }
       },
-      "options": { "reduceOptions": { "calcs": ["last"] } }
+      "yaxes": [{ "min": 0, "max": 1 }]
     },
     {
-      "title": "Chunks Indexed Over Time",
+      "title": "Tool Call P95 Latency",
+      "description": "P95 latency per MCP tool. Longer bars mean slower tools.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
-      "id": 15,
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 48 },
+      "id": 43,
       "targets": [
         {
-          "expr": "sum(rate(repo_intel_index_chunks_total[5m])) * 60",
-          "legendFormat": "chunks/min",
+          "expr": "histogram_quantile(0.95, sum by (le, tool_name) (rate(mcp_tool_call_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{tool_name}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
-      "title": "Python / GC",
+      "title": "Database Pool",
       "type": "row",
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
-      "id": 16
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "id": 50
     },
     {
-      "title": "GC Collections",
+      "title": "Pool Utilization",
+      "description": "DB connection pool usage: checked-out connections vs overflow. Pool = 5, max overflow = 10",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
-      "id": 17,
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 54 },
+      "id": 51,
       "targets": [
-        { "expr": "rate(python_gc_collections_total[5m])", "legendFormat": "gen {{generation}}", "refId": "A" }
-      ]
+        {
+          "expr": "repo_intel_db_pool_used",
+          "legendFormat": "checked out",
+          "refId": "A"
+        },
+        {
+          "expr": "repo_intel_db_pool_overflow",
+          "legendFormat": "overflow",
+          "refId": "B"
+        },
+        {
+          "expr": "repo_intel_db_pool_size",
+          "legendFormat": "pool size",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "title": "Memory Over Time",
+      "description": "Process resident memory trend — helps identify memory leaks over hours/days",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 54 },
+      "id": 52,
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes",
+          "legendFormat": "RSS",
+          "refId": "A"
+        },
+        {
+          "expr": "process_virtual_memory_bytes",
+          "legendFormat": "Virtual",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "title": "Python Runtime",
+      "type": "row",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "id": 60
+    },
+    {
+      "title": "GC Activity",
+      "description": "Python garbage collection frequency by generation",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 61 },
+      "id": 61,
+      "targets": [
+        {
+          "expr": "rate(python_gc_collections_total[5m])",
+          "legendFormat": "gen {{generation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
     },
     {
       "title": "Objects Collected",
+      "description": "Rate of Python objects collected per GC cycle",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
-      "id": 18,
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 61 },
+      "id": 62,
       "targets": [
-        { "expr": "rate(python_gc_objects_collected_total[5m])", "legendFormat": "gen {{generation}}", "refId": "A" }
-      ]
+        {
+          "expr": "rate(python_gc_objects_collected_total[5m])",
+          "legendFormat": "gen {{generation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "title": "CPU Usage",
+      "description": "CPU seconds consumed per second (approximate usage ratio)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 67 },
+      "id": 63,
+      "targets": [
+        {
+          "expr": "rate(process_cpu_seconds_total[5m])",
+          "legendFormat": "cpu",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "fixedColor": "orange" }
+        }
+      }
     }
   ],
   "refresh": "10s",
@@ -297,5 +676,5 @@
   "timezone": "browser",
   "title": "repo_intel Dashboard",
   "uid": "repo-intel",
-  "version": 1
+  "version": 2
 }

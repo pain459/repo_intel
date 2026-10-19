@@ -8,10 +8,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from repo_intel.api.metrics import get_http_metrics_middleware
 from repo_intel.compaction.manager import AutoCheckpointScheduler
 from repo_intel.config import get_settings, setup_logging
 from repo_intel.db import models
-from repo_intel.db.session import close_engine, get_engine
+from repo_intel.db.session import close_engine, get_engine, start_pool_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ async def db_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _ = get_engine()  # triggers lazy engine creation
     _auto_scheduler = AutoCheckpointScheduler()
     _auto_scheduler.start()
+    start_pool_metrics()
     logger.info("Application starting (host=%s, port=%s)", settings.host, settings.port)
     try:
         yield
@@ -75,6 +77,9 @@ def create_app() -> FastAPI:
         version=getattr(models.Base.metadata, "version", "0.1.0"),
         lifespan=combined_lifespan,
     )
+
+    # --- HTTP metrics middleware (counts & measures every request) ---
+    app.add_middleware(get_http_metrics_middleware())
 
     # --- Mount MCP server at /mcp (for OpenCode and MCP clients) ---
     app.mount("/mcp", mcp_app_instance)

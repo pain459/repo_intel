@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+import time
 
 from fastmcp import FastMCP
 
+from repo_intel.api.metrics import (
+    MCP_TOOL_CALLS,
+    MCP_TOOL_LATENCY,
+    SEARCH_LATENCY,
+    SEARCH_REQUESTS,
+    SEARCH_RESULTS,
+    SEARCH_STALE_RESULTS,
+)
 from repo_intel.db.session import get_session_factory
 
 logger = logging.getLogger(__name__)
@@ -23,11 +33,73 @@ mcp = FastMCP(
 )
 
 # ---------------------------------------------------------------------------
-# Tool registrations (async, using the existing session factory pattern)
+# Instrumentation helper — wraps MCP tool coroutines with metrics
 # ---------------------------------------------------------------------------
 
 
+def _instrument_tool(tool_name: str):
+    """Decorator that records MCP tool call metrics around an async tool fn."""
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            t0 = time.monotonic()
+            try:
+                result = await fn(*args, **kwargs)
+                MCP_TOOL_CALLS.labels(tool_name=tool_name, status="success").inc()
+                return result
+            except Exception:
+                MCP_TOOL_CALLS.labels(tool_name=tool_name, status="error").inc()
+                raise
+            finally:
+                elapsed = time.monotonic() - t0
+                MCP_TOOL_LATENCY.labels(tool_name=tool_name).observe(elapsed)
+
+        return wrapper
+
+    return decorator
+
+# ---------------------------------------------------------------------------
+# Search instrumentation helper — records additional search metrics
+# ---------------------------------------------------------------------------
+
+
+def _instrument_search(fn):
+    """Extra decorator for search-class MCP tools to record search metrics."""
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        SEARCH_REQUESTS.labels(source="mcp").inc()
+        t0 = time.monotonic()
+        try:
+            result = await fn(*args, **kwargs)
+            # Pull result counts from the return dict if present
+            num_results = 0
+            if isinstance(result, dict):
+                num_results = result.get("num_results", 0) or 0
+                # Count stale results
+                for r in result.get("results", []):
+                    if r.get("is_stale"):
+                        SEARCH_STALE_RESULTS.inc()
+            SEARCH_RESULTS.observe(num_results)
+            return result
+        except Exception:
+            raise
+        finally:
+            elapsed = time.monotonic() - t0
+            SEARCH_LATENCY.observe(elapsed)
+
+    return wrapper
+
+# ---------------------------------------------------------------------------
+# Tool registrations (async, using the existing session factory pattern)
+# ---------------------------------------------------------------------------
+# Note: _instrument_tool is applied BEFORE @mcp.tool so metrics fire for
+# every MCP call regardless of whether it succeeds or raises.
+
+
 @mcp.tool
+@_instrument_tool("repo_list")
 async def repo_list() -> dict:
     """List all registered repositories and their index status.
 
@@ -88,6 +160,8 @@ async def repo_list() -> dict:
 
 
 @mcp.tool
+@_instrument_search
+@_instrument_tool("repo_search")
 async def repo_search(
     query: str,
     repository_id: str | None = None,
@@ -138,6 +212,7 @@ async def repo_search(
 
 
 @mcp.tool
+@_instrument_tool("repo_symbol")
 async def repo_symbol(
     symbol_name: str,
     repository_id: str | None = None,
@@ -182,6 +257,8 @@ async def repo_symbol(
 
 
 @mcp.tool
+@_instrument_search
+@_instrument_tool("repo_context")
 async def repo_context(
     task_description: str,
     repository_id: str | None = None,
@@ -237,6 +314,7 @@ async def repo_context(
 
 
 @mcp.tool
+@_instrument_tool("index_status")
 async def index_status(repository_id: str) -> dict:
     """Get the detailed index status for a repository.
 
@@ -311,6 +389,7 @@ async def index_status(repository_id: str) -> dict:
 
 
 @mcp.tool
+@_instrument_tool("memory_write")
 async def memory_write(
     kind: str,
     statement: str,
@@ -376,6 +455,7 @@ async def memory_write(
 
 
 @mcp.tool(name="memory_record")
+@_instrument_tool("memory_record")
 async def memory_record_alias(
     kind: str,
     statement: str,
@@ -396,6 +476,7 @@ async def memory_record_alias(
 
 
 @mcp.tool
+@_instrument_tool("memory_search")
 async def memory_search(
     query: str | None = None,
     repository_id: str | None = None,
@@ -455,6 +536,7 @@ async def memory_search(
 
 
 @mcp.tool
+@_instrument_tool("checkpoint_save")
 async def checkpoint_save(
     objective: str,
     session_id: str | None = None,
@@ -516,6 +598,7 @@ async def checkpoint_save(
 
 
 @mcp.tool
+@_instrument_tool("checkpoint_get")
 async def checkpoint_get(
     session_id: str | None = None,
     repository_id: str | None = None,
@@ -572,6 +655,7 @@ async def checkpoint_get(
 
 
 @mcp.tool(name="task_resume")
+@_instrument_tool("task_resume")
 async def task_resume_alias(
     session_id: str | None = None,
     repository_id: str | None = None,
@@ -589,6 +673,7 @@ async def task_resume_alias(
 
 
 @mcp.tool
+@_instrument_tool("compaction_checkpoint_save")
 async def compaction_checkpoint_save(
     objective: str,
     session_id: str | None = None,
@@ -660,6 +745,7 @@ async def compaction_checkpoint_save(
 
 
 @mcp.tool
+@_instrument_tool("session_bootstrap")
 async def session_bootstrap(
     session_id: str | None = None,
     repository_id: str | None = None,
@@ -690,6 +776,7 @@ async def session_bootstrap(
 
 
 @mcp.tool
+@_instrument_tool("repo_dependencies")
 async def repo_dependencies(
     symbol_name: str,
     repository_id: str | None = None,

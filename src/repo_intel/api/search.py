@@ -8,6 +8,12 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from repo_intel.api.metrics import (
+    SEARCH_LATENCY,
+    SEARCH_REQUESTS,
+    SEARCH_RESULTS,
+    SEARCH_STALE_RESULTS,
+)
 from repo_intel.retrieval.search import hybrid_search
 from repo_intel.retrieval.types import SearchResult
 
@@ -71,6 +77,9 @@ async def search(body: SearchQuery) -> SearchResponse:
 
     t0 = time.monotonic()
 
+    # Track metrics
+    SEARCH_REQUESTS.labels(source="rest").inc()
+
     # Validate repository scope if given
     if body.repository_id:
         async with get_session_factory()() as validate_session:
@@ -103,6 +112,12 @@ async def search(body: SearchQuery) -> SearchResponse:
     # Collect freshness data for event recording
     selected_chunk_ids = [str(h.chunk_id) for h in hits]
     stale_count = sum(1 for h in hits if h.is_stale)
+
+    # Emit search metrics
+    SEARCH_LATENCY.observe(elapsed / 1000)
+    SEARCH_RESULTS.observe(len(hits))
+    if stale_count:
+        SEARCH_STALE_RESULTS.inc(stale_count)
     # Grab the first result's generation if available
     first_gen = None
     for h in hits:

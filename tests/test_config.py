@@ -1,8 +1,19 @@
 """Configuration tests."""
-from repo_intel.config import Settings
+import pytest
+
+from repo_intel.config import Settings, _cached_settings
 
 
-def test_settings_defaults():
+@pytest.fixture(autouse=True)
+def _clear_settings_cache():
+    """Clear cached settings so each test reads fresh defaults."""
+    _cached_settings.cache_clear()
+
+
+def test_settings_defaults(monkeypatch):
+    # Remove env vars that override defaults
+    for var in ("HOST", "PORT"):
+        monkeypatch.delenv(var, raising=False)
     s = Settings()
     assert s.host == "127.0.0.1"
     assert s.port == 8765
