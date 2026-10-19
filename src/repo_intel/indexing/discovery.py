@@ -13,6 +13,8 @@ from pathspec import GitIgnoreSpec, PathSpec
 from repo_intel.config import get_settings
 from repo_intel.security.paths import (
     SecurityConfig as _SecurityConfig,
+)
+from repo_intel.security.paths import (
     is_safe_relative_path,
     is_secret_file,
 )

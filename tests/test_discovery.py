@@ -3,9 +3,7 @@
 import os
 import tempfile
 
-import pytest
-from repo_intel.indexing.discovery import discover_files, _detect_language, _is_binary
-
+from repo_intel.indexing.discovery import _detect_language, _is_binary, discover_files
 
 # ------------------------------------------------------------------
 # File discovery

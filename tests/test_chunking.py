@@ -1,8 +1,6 @@
 """Tests for the chunking module."""
 
-import pytest
-from repo_intel.indexing.chunker import Chunk, chunk_file, _detect_language
-
+from repo_intel.indexing.chunker import _detect_language, chunk_file
 
 # ------------------------------------------------------------------
 # Language detection

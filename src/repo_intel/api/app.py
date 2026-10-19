@@ -70,8 +70,8 @@ def create_app() -> FastAPI:
     # --- Register REST routers ---
     from repo_intel.api.checkpoints import router as cp_router  # noqa: PLC0415
     from repo_intel.api.health import health_router  # noqa: PLC0415
-    from repo_intel.api.memory import router as memory_router  # noqa: PLC0415
     from repo_intel.api.mcp import router as mcp_router  # noqa: PLC0415
+    from repo_intel.api.memory import router as memory_router  # noqa: PLC0415
     from repo_intel.api.repositories import router as repo_router  # noqa: PLC0415
     from repo_intel.api.search import router as search_router  # noqa: PLC0415
 

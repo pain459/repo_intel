@@ -86,6 +86,7 @@ async def _exact_candidates(
         .join(FileRecord, Chunk.file_id == FileRecord.id)
         .where(
             Chunk.generation_id.in_(generation_ids),
+            Chunk.stale == False,  # noqa: E712
             FileRecord.deleted == False,  # noqa: E712
         )
     )
@@ -130,6 +131,7 @@ async def _lexical_candidates(
         JOIN files f ON c.file_id = f.id
         WHERE c.generation_id IN ({placeholders})
           AND f.deleted = false
+          AND c.stale = false
           AND to_tsvector('english', c.content) @@ plainto_tsquery('english', :query)
         ORDER BY rank_val DESC
         LIMIT :limit
@@ -191,6 +193,7 @@ async def _semantic_candidates(
             JOIN files f ON c.file_id = f.id
             WHERE c.generation_id IN ({placeholders})
               AND f.deleted = false
+              AND c.stale = false
               AND c.embedding IS NOT NULL
             ORDER BY c.embedding <=> CAST(:query_vec AS vector)
             LIMIT :limit

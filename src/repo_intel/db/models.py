@@ -145,6 +145,8 @@ class Chunk(Base, TimestampMixin):
     estimated_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # pgvector embedding — dimension from config at index time
     embedding: Mapped[list[float] | None] = mapped_column(Vector, nullable=True)
+    # True when this chunk belongs to a generation that is no longer active
+    stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     file: Mapped[FileRecord] = relationship(back_populates="chunks")
     generation: Mapped[IndexGeneration] = relationship(back_populates="chunks")

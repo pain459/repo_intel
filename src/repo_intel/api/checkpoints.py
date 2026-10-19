@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import uuid
-
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
-from repo_intel.db.session import get_session_factory
 from sqlalchemy import select
 
-from repo_intel.db.models import Memory, Repository, TaskCheckpoint
+from repo_intel.db.models import Repository, TaskCheckpoint
+from repo_intel.db.session import get_session_factory
 
 router = APIRouter(prefix="/api/checkpoints", tags=["checkpoints"])
 

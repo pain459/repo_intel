@@ -1,12 +1,14 @@
-"""Tests for the security layer: path safety + secret redaction."""
+"""Tests for the security layer: path safety + secret redaction + log filter."""
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 
 import pytest
 
+from repo_intel.security.log_filter import CredentialFilter
 from repo_intel.security.paths import (
     PathTraversalError,
     SecurityConfig,
@@ -16,7 +18,6 @@ from repo_intel.security.paths import (
     resolve_safe,
 )
 from repo_intel.security.redaction import redact_content
-
 
 # ===================================================================
 # Path safety tests
@@ -246,3 +247,85 @@ class TestDiscoverySecurity:
         rel_paths = [f.relative_path for f in files]
         assert not any(".ssh" in p for p in rel_paths)
         assert "main.py" in rel_paths
+
+
+# ===================================================================
+# Log credential filter tests
+# ===================================================================
+
+
+class TestCredentialLogFilter:
+    def _make_filter(self) -> CredentialFilter:
+        return CredentialFilter()
+
+    def test_github_token_redacted_in_msg(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "Token: ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", (), None,
+        )
+        f.filter(rec)
+        assert "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" not in str(rec.msg)
+        assert "***REDACTED***" in str(rec.msg)
+
+    def test_aws_key_redacted_in_msg(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "AKIAIOSFODNN7EXAMPLE leaked", (), None,
+        )
+        f.filter(rec)
+        assert "AKIAIOSFODNN7EXAMPLE" not in str(rec.msg)
+
+    def test_connection_string_password_redacted(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "postgres://user:secretpass@host/db", (), None,
+        )
+        f.filter(rec)
+        assert "secretpass" not in str(rec.msg)
+
+    def test_password_assignment_redacted(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.WARNING, "test.py", 1,
+            "password=s3cretValue123", (), None,
+        )
+        f.filter(rec)
+        assert "s3cretValue123" not in str(rec.msg)
+
+    def test_tuple_args_redacted(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "Connecting to %s", ("postgres://u:pass123@h/d",), None,
+        )
+        f.filter(rec)
+        assert "pass123" not in str(rec.args)
+
+    def test_dict_args_redacted(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "Config: %(val)s", (), None,
+        )
+        rec.args = {"val": "password=secretVal99"}
+        f.filter(rec)
+        assert "secretVal99" not in str(rec.args)
+
+    def test_normal_message_unchanged(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.INFO, "test.py", 1,
+            "Indexed 42 files", (), None,
+        )
+        f.filter(rec)
+        assert rec.msg == "Indexed 42 files"
+
+    def test_filter_always_returns_true(self) -> None:
+        f = self._make_filter()
+        rec = logging.LogRecord(
+            "test", logging.DEBUG, "test.py", 1, "ok", (), None,
+        )
+        assert f.filter(rec) is True

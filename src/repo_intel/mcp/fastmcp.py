@@ -321,6 +321,8 @@ async def memory_write(
 ) -> dict:
     """Write a new agent memory (preference, observation, or instruction).
 
+    Also known as: memory_record.
+
     Memories start with status 'candidate' and can later be promoted to
     'verified' or marked as 'superseded' or 'rejected'.
 
@@ -369,14 +371,40 @@ async def memory_write(
     }
 
 
+# Aliases — plan names (memory_search, memory_record, task_resume) must also
+# resolve.  We delegate to the canonical implementations.
+
+
+@mcp.tool(name="memory_record")
+async def memory_record_alias(
+    kind: str,
+    statement: str,
+    repository_id: str | None = None,
+    evidence: dict | None = None,
+    source_commit: str | None = None,
+    author: str | None = None,
+) -> dict:
+    """Alias for memory_write. See memory_write for full documentation."""
+    return await memory_write(
+        kind=kind,
+        statement=statement,
+        repository_id=repository_id,
+        evidence=evidence,
+        source_commit=source_commit,
+        author=author,
+    )
+
+
 @mcp.tool
-async def memory_read(
+async def memory_search(
     query: str | None = None,
     repository_id: str | None = None,
     kind: str | None = None,
     limit: int = 20,
 ) -> dict:
     """Read agent memories with optional filtering and full-text search.
+
+    Also known as: memory_read.
 
     Args:
         query: Text to search for in memory statements.
@@ -494,6 +522,8 @@ async def checkpoint_get(
 ) -> dict:
     """Retrieve the latest checkpoint for a session and/or repository.
 
+    Also known as: task_resume.
+
     Args:
         session_id: Session identifier to filter by.
         repository_id: Optional repository UUID to filter by.
@@ -536,6 +566,21 @@ async def checkpoint_get(
         "evidence": cp.evidence,
         "created_at": str(cp.created_at),
     }
+
+
+# Alias — plan name task_resume delegates to checkpoint_get
+
+
+@mcp.tool(name="task_resume")
+async def task_resume_alias(
+    session_id: str | None = None,
+    repository_id: str | None = None,
+) -> dict:
+    """Alias for checkpoint_get. See checkpoint_get for full documentation."""
+    return await checkpoint_get(
+        session_id=session_id,
+        repository_id=repository_id,
+    )
 
 
 # ---------------------------------------------------------------------------

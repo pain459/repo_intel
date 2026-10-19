@@ -199,6 +199,16 @@ async def scan_repository(
         if rel_path not in seen_paths:
             existing.deleted = True
 
+    # 5b. Mark chunks belonging to older generations as stale
+    await session.execute(
+        update(Chunk)
+        .where(
+            Chunk.generation_id != generation_id,
+            Chunk.stale == False,  # noqa: E712
+        )
+        .values(stale=True)
+    )
+
     # 6. Update generation state
     generation.chunk_count = total_chunks
     generation.state = "active"

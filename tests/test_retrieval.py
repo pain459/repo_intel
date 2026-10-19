@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-from repo_intel.retrieval.types import SearchRequest, SearchResult, SearchMethod
 from repo_intel.retrieval.search import (
-    _rrf_fuse,
+    _CHARS_PER_TOKEN,
     _apply_token_budget,
     _build_reason,
-    _CHARS_PER_TOKEN,
+    _rrf_fuse,
 )
-
+from repo_intel.retrieval.types import SearchResult
 
 # ---------------------------------------------------------------------------
 # RRF fusion

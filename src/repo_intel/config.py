@@ -74,6 +74,12 @@ def setup_logging(level: str | None = None) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
+    # Apply credential redaction filter to log output
+    from repo_intel.security.log_filter import (  # noqa: PLC0415
+        apply_credential_filter,
+    )
+
+    apply_credential_filter()
 
 
 def get_settings() -> Settings:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from fastapi.testclient import TestClient
 
 from repo_intel.api.app import create_app
@@ -123,7 +121,7 @@ class TestMemoryDelete:
         assert resp.status_code == 204
 
         # Confirm gone
-        resp = client.get(f"/api/memory/")
+        resp = client.get("/api/memory/")
         ids = [m["id"] for m in resp.json()]
         assert mem_id not in ids
 
