@@ -13,12 +13,12 @@
 
 - **Indexes** local Git repositories → searchable chunks in PostgreSQL + pgvector
 - **Hybrid search**: exact match + full-text + semantic vector + symbol lookup (4-way RRF fusion)
-- **MCP tools**: 14 tools exposed to coding agents (OpenCode) for on-demand retrieval
+- **MCP tools**: 17 tools exposed to coding agents (OpenCode) for on-demand retrieval
 - **Agent memory**: evidence-backed decisions, preferences, and observations with lifecycle management
 - **Session checkpoints**: persist and restore work-in-progress across agent sessions
 - **Compaction continuity**: survive context compaction with auto-checkpointing and session bootstrap
 - **Dependency graph**: heuristic symbol edge detection + BFS traversal tool
-- **Prometheus metrics**: `/metrics` endpoint for monitoring search, indexing, and system health
+- **Prometheus metrics**: `/metrics` endpoint scraped by included Prometheus + Grafana stack
 
 ## Quick start (5 minutes)
 
@@ -83,6 +83,19 @@ See [Getting Started Guide](docs/GETTING_STARTED.md) for a complete walkthrough.
 └───────────────────────────────────────────────────────────────────┘
 ```
 
+## MCP Configuration for OpenCode
+
+repo_intel connects to OpenCode via MCP. Configure it with:
+
+```bash
+cp opencode.jsonc.example opencode.jsonc
+# or:
+docker compose exec api repo-intel mcp configure --client opencode --transport sse
+```
+
+Once configured, all tools appear as `tools.repo_intel.*` in Code Mode.
+See [Getting Started](docs/GETTING_STARTED.md) and [Usage Guide](docs/USAGE.md).
+
 ## CLI Commands
 
 | Command | Description |
@@ -101,7 +114,10 @@ See [Getting Started Guide](docs/GETTING_STARTED.md) for a complete walkthrough.
 | `repo-intel restore <file>` | Restore from backup |
 | `repo-intel mcp configure` | Generate MCP client configuration |
 
-## MCP Tools (14)
+## MCP Tools (17)
+
+Connected via `opencode.jsonc`, all tools appear in OpenCode as `tools.repo_intel.*`.
+See [Usage Guide](docs/USAGE.md) for the full reference with examples.
 
 | # | Tool | Description |
 |---|------|-------------|
@@ -110,15 +126,15 @@ See [Getting Started Guide](docs/GETTING_STARTED.md) for a complete walkthrough.
 | 3 | `repo_symbol` | Find symbol definitions by name |
 | 4 | `repo_context` | Build a curated evidence pack |
 | 5 | `index_status` | Get detailed index status |
-| 6 | `memory_write` | Write agent memory |
-| 7 | `memory_read` | Query agent memories |
-| 8 | `memory_record` | Alias for memory_write (legacy naming) |
-| 9 | `checkpoint_save` | Save a task progress snapshot |
-| 10 | `checkpoint_get` | Retrieve latest checkpoint |
-| 11 | `task_resume` | Alias for checkpoint_get |
-| 12 | `compaction_checkpoint_save` | Save checkpoint for compaction recovery |
-| 13 | `session_bootstrap` | Restore session state after compaction |
-| 14 | `repo_dependencies` | Traverse symbol dependency graph |
+| 6 | `repo_dependencies` | Traverse symbol dependency graph |
+| 7 | `memory_write` | Write agent memory |
+| 8 | `memory_search` | Query agent memories (by text, kind, repository) |
+| 9 | `memory_record` | Alias for memory_write (legacy naming) |
+| 10 | `checkpoint_save` | Save a task progress snapshot |
+| 11 | `checkpoint_get` | Retrieve latest checkpoint |
+| 12 | `task_resume` | Alias for checkpoint_get |
+| 13 | `compaction_checkpoint_save` | Save checkpoint for compaction recovery |
+| 14 | `session_bootstrap` | Restore session state after compaction |
 
 ## REST API
 
@@ -149,6 +165,19 @@ All settings via `.env` (or environment variables). See [.env.example](.env.exam
 | `DATABASE_URL` | *(see .env.example)* | PostgreSQL connection string |
 | `INDEX_POLL_SECONDS` | `10` | Worker polling interval |
 | `MAX_FILE_BYTES` | `1048576` | Max file size (1 MB) |
+
+## Monitoring
+
+The Docker Compose stack includes Prometheus and Grafana, pre-configured with a
+repo_intel dashboard covering service health, search latency, indexing throughput,
+and Python GC statistics.
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Prometheus** | http://127.0.0.1:9090 | — |
+| **Grafana** | http://127.0.0.1:3000 | `admin` / `admin` |
+
+The dashboard loads automatically on Grafana startup.
 
 ## Development
 

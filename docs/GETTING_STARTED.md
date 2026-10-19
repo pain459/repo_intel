@@ -1,12 +1,13 @@
 # Getting Started with repo_intel
 
-This guide walks a new developer through setting up repo_intel from scratch, verifying everything works, and performing the first productive search.
+This guide walks a new developer through setting up repo_intel from scratch, verifying everything works, connecting OpenCode via MCP, and performing the first productive search.
 
 **Target audience:** You've just cloned the repo and want to see it working.
 
 **Prerequisites:**
 - Docker + Docker Compose (v2.20+)
 - Git
+- OpenCode (for MCP agent integration)
 - Access to an Ollama instance with `nomic-embed-text` model (can be local or remote)
 
 ---
@@ -19,10 +20,11 @@ This guide walks a new developer through setting up repo_intel from scratch, ver
 4. [Verify Everything Works](#4-verify-everything-works)
 5. [Register and Index a Repository](#5-register-and-index-a-repository)
 6. [Search](#6-search)
-7. [Connect OpenCode](#7-connect-opencode)
-8. [Agent Workflows](#8-agent-workflows)
-9. [Monitor and Maintain](#9-monitor-and-maintain)
-10. [Troubleshooting](#10-troubleshooting)
+7. [Connect OpenCode via MCP](#7-connect-opencode-via-mcp)
+8. [Using MCP Tools in OpenCode](#8-using-mcp-tools-in-opencode)
+9. [Agent Workflows](#9-agent-workflows)
+10. [Monitoring with Prometheus and Grafana](#10-monitoring-with-prometheus-and-grafana)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
@@ -34,11 +36,12 @@ cd repo_intel
 ```
 
 The repository contains:
-- `compose.yaml` — Docker services (api, worker, postgres)
+- `compose.yaml` — Docker services (api, worker, postgres, prometheus, grafana)
 - `Dockerfile` — Python 3.12 environment
 - `src/repo_intel/` — Application code
 - `tests/` — Test suite (154 tests)
 - `docs/` — Documentation
+- `monitoring/` — Prometheus + Grafana configuration
 
 ---
 
@@ -50,7 +53,7 @@ cp .env.example .env
 
 Open `.env` and set at minimum:
 ```
-POSTGRES_PASSWORD=your-secure-password
+DATABASE_URL=postgresql+psycopg://repo_intel:your-secure-password@postgres:5432/repo_intel
 OLLAMA_BASE_URL=http://192.168.68.62:11434      # your Ollama address
 ```
 
@@ -58,10 +61,9 @@ OLLAMA_BASE_URL=http://192.168.68.62:11434      # your Ollama address
 
 | Variable | What it controls |
 |----------|-----------------|
-| `POSTGRES_PASSWORD` | Database password (must be set) |
+| `DATABASE_URL` | PostgreSQL connection string (set a real password) |
 | `OLLAMA_BASE_URL` | Where your Ollama server runs |
 | `EMBEDDING_MODEL` | Embedding model (default: `nomic-embed-text`) |
-| `DATABASE_URL` | Auto-built from above; don't override unless needed |
 | `HOST_REPO_ROOT` | (compose only) Path mounted as `/workspace` |
 
 **Profiles:**
@@ -76,13 +78,15 @@ OLLAMA_BASE_URL=http://192.168.68.62:11434      # your Ollama address
 docker compose up -d --build
 ```
 
-This starts three services:
+This starts five services:
 
-| Service | What it does |
-|---------|-------------|
-| **api** | FastAPI server on `127.0.0.1:8765` (REST + MCP + health + metrics) |
-| **worker** | Background indexing job processor |
-| **postgres** | PostgreSQL 16 + pgvector extension |
+| Service | URL | What it does |
+|---------|-----|-------------|
+| **api** | `http://127.0.0.1:8765` | FastAPI server (REST + MCP + health + metrics) |
+| **worker** | — | Background indexing job processor |
+| **postgres** | — | PostgreSQL 16 + pgvector extension |
+| **prometheus** | `http://127.0.0.1:9090` | Metrics scraper (scrapes `/metrics` every 15s) |
+| **grafana** | `http://127.0.0.1:3000` | Dashboards (default login: `admin`/`admin`) |
 
 Wait ~15 seconds for all services to become healthy:
 
@@ -134,19 +138,6 @@ Expected output:
 
 All 5 checks passed.
 ```
-
-### Prometheus Metrics
-
-```bash
-docker compose exec api curl -sf http://127.0.0.1:8765/metrics | head -20
-```
-
-Returns Prometheus-format metrics. Key custom metrics:
-- `repo_intel_search_requests_total` — counter by search method
-- `repo_intel_search_latency_seconds` — histogram
-- `repo_intel_index_chunks_total` — counter by chunk type
-
-See [Operations Guide](OPERATIONS.md) for monitoring setup.
 
 ### Tests
 
@@ -222,164 +213,241 @@ curl -X POST http://127.0.0.1:8765/api/search/ \
   -d '{"query": "how does indexing work", "limit": 5}'
 ```
 
-### MCP (via OpenCode)
-
-```python
-tools.repo_intel.repo_search(
-    query="how does indexing work",
-    limit=5
-)
-```
-
 ---
 
-## 7. Connect OpenCode
+## 7. Connect OpenCode via MCP
 
-### Option A: `opencode.jsonc.example`
+repo_intel exposes an MCP (Model Context Protocol) server at `/mcp/`. OpenCode connects to it and makes all 17 tools available as `tools.repo_intel.*` in Code Mode.
+
+### Option A: `opencode.jsonc` (Recommended)
+
+Create or copy the OpenCode config file:
 
 ```bash
 cp opencode.jsonc.example opencode.jsonc
 ```
 
-OpenCode auto-connects on startup and discovers all 14 MCP tools.
+This writes:
+
+```jsonc
+// opencode.jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "repo_intel": {
+        "type": "remote",
+        "url": "http://localhost:8765/mcp/",
+        "oauth": false
+      }
+    }
+  }
+}
+```
+
+OpenCode reads `opencode.jsonc` on startup, connects to the MCP server at `http://localhost:8765/mcp/`, and automatically discovers all available tools.
+
+**How it works:**
+- OpenCode sends an MCP `initialize` request to the server
+- The server responds with the list of tools it provides
+- OpenCode registers each tool under the namespace `tools.repo_intel.<tool_name>`
+- In Code Mode, you call tools like `tools.repo_intel.repo_search(...)`
 
 ### Option B: CLI Configurator
+
+If you prefer the MCP config to be written to `~/.config/opencode/mcp.json` instead of a project-local `opencode.jsonc`, use the CLI:
 
 ```bash
 docker compose exec api repo-intel mcp configure --client opencode --transport sse
 ```
 
-This writes `~/.config/opencode/mcp.json` with the server URL.
+This:
+1. Reads the server host/port from settings (default `127.0.0.1:8765`)
+2. Builds a config JSON with the MCP endpoint URL
+3. Writes it to `~/.config/opencode/mcp.json`
 
-### Verify
+Both options achieve the same result — OpenCode connects to the repo_intel MCP server. Use whichever config location you prefer.
 
-In OpenCode's Code Mode:
+### Verify the Connection
+
+1. Make sure the stack is running: `docker compose ps`
+2. Start OpenCode in your project directory (where `opencode.jsonc` exists)
+3. Enter Code Mode and run:
+
 ```python
 tools.repo_intel.repo_list()
 ```
 
-Should return your registered repositories.
+If you see your registered repositories, the MCP connection is working.
+
+If tools don't appear, see [Troubleshooting: MCP Issues](#mcp-tools-not-discovered).
 
 ---
 
-## 8. Agent Workflows
+## 8. Using MCP Tools in OpenCode
+
+Once connected, the following tools are available in Code Mode under `tools.repo_intel.*`:
+
+### Repository Tools
+
+| Tool | Description |
+|------|-------------|
+| `tools.repo_intel.repo_list()` | List all registered repos with file/chunk counts |
+| `tools.repo_intel.repo_search(query, repository_id?, limit?)` | Hybrid search (exact + FTS + vector + symbol) |
+| `tools.repo_intel.repo_symbol(symbol_name, repository_id?)` | Find class/function definitions by name |
+| `tools.repo_intel.repo_context(task_description, repository_id?, token_budget?)` | Build a curated evidence pack up to a token budget |
+| `tools.repo_intel.index_status(repository_id)` | Get detailed index status for a repo |
+| `tools.repo_intel.repo_dependencies(symbol_name, direction, depth)` | Traverse the symbol dependency graph |
+
+### Memory Tools
+
+| Tool | Description |
+|------|-------------|
+| `tools.repo_intel.memory_write(kind, statement, ...)` | Record a preference, observation, or instruction |
+| `tools.repo_intel.memory_search(query?, kind?, repository_id?, limit?)` | Query stored memories |
+| `tools.repo_intel.memory_record(...)` | Legacy alias for `memory_write` |
+
+### Session & Checkpoint Tools
+
+| Tool | Description |
+|------|-------------|
+| `tools.repo_intel.checkpoint_save(objective, session_id, ...)` | Save task progress |
+| `tools.repo_intel.checkpoint_get(session_id?)` | Retrieve latest checkpoint |
+| `tools.repo_intel.task_resume(...)` | Legacy alias for `checkpoint_get` |
+| `tools.repo_intel.compaction_checkpoint_save(...)` | Checkpoint optimized for compaction recovery |
+| `tools.repo_intel.session_bootstrap(session_id?)` | Restore session state after compaction |
+
+See [Usage Guide](USAGE.md) for detailed parameter reference and examples for every tool.
+
+---
+
+## 9. Agent Workflows
 
 ### Code Investigation
 
 ```python
-# Search for relevant code
-tools.repo_intel.repo_search(query="authentication flow", limit=5)
+# 1. List repos
+tools.repo_intel.repo_list()
 
-# Look up a specific function
-tools.repo_intel.repo_symbol(symbol_name="authenticate_user")
+# 2. Search for relevant code
+tools.repo_intel.repo_search(query="authentication middleware", limit=5)
 
-# Build a complete context pack
+# 3. Look up a specific symbol
+tools.repo_intel.repo_symbol(symbol_name="AuthMiddleware")
+
+# 4. Build a complete context pack
 tools.repo_intel.repo_context(
-    task_description="Explain the auth middleware chain",
+    task_description="Explain the auth flow",
     token_budget=8000
 )
-```
 
-### Remember Learnings
-
-```python
-tools.repo_intel.memory_write(
-    kind="observation",
-    statement="The API uses JWT tokens validated via middleware",
-    repository_id="uuid-of-repo"
+# 5. Explore what the symbol depends on
+tools.repo_intel.repo_dependencies(
+    symbol_name="AuthMiddleware",
+    direction="outgoing",
+    depth=2
 )
 ```
 
-### Track Progress
+### Long-Session Workflow with Checkpoints
 
 ```python
-# Save checkpoint (every 15-20 min or at milestones)
+# Start of session: save checkpoint
 tools.repo_intel.checkpoint_save(
-    objective="Implement auth middleware",
-    session_id="auth-task",
-    current_state="Draft complete",
-    changed_files=["src/auth.py"],
+    objective="Refactor the search pipeline",
+    session_id="search-refactor",
+    pending_steps=["Profile search", "Optimize vector index", "Add tests"]
+)
+
+# After some work: update checkpoint
+tools.repo_intel.checkpoint_save(
+    objective="Refactor the search pipeline",
+    session_id="search-refactor",
+    current_state="Vector index optimized, 20% faster",
+    changed_files=["src/retrieval/search.py"],
     pending_steps=["Add tests", "Write docs"]
 )
 
-# Resume later
-tools.repo_intel.checkpoint_get(session_id="auth-task")
-```
-
-### Compaction Recovery
-
-When context is about to be compacted:
-```python
+# Before context compaction: save a compaction-optimized checkpoint
 tools.repo_intel.compaction_checkpoint_save(
-    objective="My current objective",
-    session_id="my-session",
-    changed_files=["src/file.py"]
+    objective="Refactor the search pipeline",
+    session_id="search-refactor",
+    changed_files=["src/retrieval/search.py", "tests/test_retrieval.py"]
 )
+
+# After compaction: restore everything
+state = tools.repo_intel.session_bootstrap(session_id="search-refactor")
 ```
 
-After compaction:
-```python
-tools.repo_intel.session_bootstrap(session_id="my-session")
-```
-
-### Dependency Exploration
+### Remember What You Learn
 
 ```python
-tools.repo_intel.repo_dependencies("UserModel", direction="outgoing", depth=2)
+# Save a discovery
+tools.repo_intel.memory_write(
+    kind="observation",
+    statement="The agent-memory repo uses TypeScript for its proxy layer",
+    repository_id="4f69d864-aea3-443f-95f9-5376c7cddb9c"
+)
+
+# Later: query and verify
+tools.repo_intel.memory_search(query="proxy layer", kind="observation")
 ```
 
 ---
 
-## 9. Monitor and Maintain
+## 10. Monitoring with Prometheus and Grafana
 
-### Daily Operations
+The Docker Compose stack includes Prometheus and Grafana pre-configured for repo_intel.
+
+### Access the Dashboards
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **Prometheus** | http://127.0.0.1:9090 | — |
+| **Grafana** | http://127.0.0.1:3000 | `admin` / `admin` |
+
+### Grafana Dashboard
+
+The "repo_intel Dashboard" loads automatically when Grafana starts. It includes panels for:
+
+- **Service Health** — uptime, open file descriptors, resident memory, CPU usage
+- **Search Performance** — request rate, p50/p90/p95/p99 latency, latency distribution over time
+- **Indexing** — chunks indexed per minute, cumulative total
+- **Python / GC** — garbage collection rate and objects collected by generation
+
+Prometheus scrapes the API's `/metrics` endpoint every 15 seconds and retains data for 7 days.
+
+### Custom Metrics
+
+The API exposes these repo_intel-specific metrics in Prometheus format:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `repo_intel_search_requests_total` | Counter | Total searches by method (exact, fts, vector, symbol) |
+| `repo_intel_search_latency_seconds` | Histogram | Search latency buckets |
+| `repo_intel_index_chunks_total` | Counter | Total chunks indexed by type |
+
+You can also fetch raw metrics directly:
 
 ```bash
-# Check services
-docker compose ps
-
-# Check logs
-docker compose logs --tail=20 api
-docker compose logs --tail=20 worker
-
-# Rebuild after code changes
-docker compose up -d --build
+curl http://127.0.0.1:8765/metrics
 ```
 
-### Backups
-
-```bash
-# Manual
-docker compose exec postgres pg_dump -U repo_intel repo_intel > backup.sql
-
-# CLI (compressed)
-docker compose exec api repo-intel backup
-```
-
-### Common Maintenance
-
-```bash
-# Re-index all repos
-docker compose exec api repo-intel index
-
-# Apply DB migrations (usually automatic)
-docker compose exec api alembic upgrade head
-
-# Full stack reset (⚠️ destroys data)
-docker compose down -v  # Only after backup
-```
+See [Operations Guide](OPERATIONS.md) for production monitoring tips.
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### "Ollama not reachable"
+
 ```bash
 # Verify Ollama is running and accessible
 curl $OLLAMA_BASE_URL/api/tags
 ```
 
 ### Search returns few results
+
 ```bash
 # Check if chunks have embeddings
 docker compose exec postgres psql -U repo_intel repo_intel -c \
@@ -387,26 +455,52 @@ docker compose exec postgres psql -U repo_intel repo_intel -c \
 # If 0: trigger re-index
 ```
 
+### MCP Tools Not Discovered
+
+1. Check `opencode.jsonc` exists and points to the correct URL:
+   ```jsonc
+   { "mcp": { "servers": { "repo_intel": { "type": "remote", "url": "http://localhost:8765/mcp/" } } } }
+   ```
+2. Verify the API is healthy:
+   ```bash
+   curl -sf http://localhost:8765/health/live
+   ```
+3. Verify the MCP endpoint responds:
+   ```bash
+   curl -s http://localhost:8765/api/mcp/tools | python3 -m json.tool
+   ```
+   Should list 17 tools.
+4. Restart OpenCode after making config changes.
+
 ### Worker not processing jobs
+
 ```bash
 docker compose logs worker --tail=20
 docker compose restart worker
 ```
 
-### MCP not connecting
-See [Troubleshooting Guide](TROUBLESHOOTING.md#mcp-endpoint-issues)
+### Prometheus isn't scraping metrics
+
+Check inside the Prometheus container:
+
+```bash
+docker compose exec prometheus wget -q -O - http://localhost:9090/api/v1/targets
+```
+
+Look for the `repo_intel` target with `"health":"UP"`.
 
 ### Performance Issues
 
-For large repos, check monitoring:
 ```bash
-# Memory/CPU
+# Memory/CPU per container
 docker compose stats
 
-# Slow queries (inside postgres)
+# Slow DB queries
 docker compose exec postgres psql -U repo_intel repo_intel -c \
   "SELECT query, calls, mean_time FROM pg_stat_statements ORDER BY mean_time DESC LIMIT 5;"
 ```
+
+For detailed troubleshooting, see [Troubleshooting Guide](TROUBLESHOOTING.md).
 
 ---
 

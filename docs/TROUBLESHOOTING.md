@@ -232,10 +232,31 @@ services:
 
 ## Monitoring Issues
 
-### "Where are the Prometheus metrics?"
+### "Where are the dashboards?"
 
-repo_intel exposes a `/metrics` endpoint (Prometheus format) on the API server.
-It does **not** include a Prometheus container. Add your own scraper:
+The Docker Compose stack includes Prometheus and Grafana:
+
+- **Prometheus**: http://127.0.0.1:9090 (scrapes `/metrics` every 15s, retains 7 days)
+- **Grafana**: http://127.0.0.1:3000 (default login `admin`/`admin`)
+
+The "repo_intel Dashboard" loads automatically with panels for service health,
+search latency (p50/p95/p99), indexing throughput, and GC statistics.
+
+### Prometheus isn't scraping metrics
+
+Check target health inside the Prometheus container:
+
+```bash
+docker compose exec prometheus wget -q -O - http://localhost:9090/api/v1/targets
+```
+
+Look for the `repo_intel` target. If `"health":"DOWN"`, check that the API
+container is healthy and reachable from the Prometheus container.
+
+### "Where are the Prometheus metrics?" (external scraper)
+
+If you want to scrape repo_intel metrics from an external Prometheus instance
+(not the included one):
 
 ```yaml
 # prometheus.yaml
