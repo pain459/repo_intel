@@ -1,7 +1,7 @@
 # Remaining Work — v1.0 Gap Audit
 
 **Date:** 2026-10-19  
-**Status:** Partials resolved. Migration `004_phase6` applied. 108 tests passing, lint clean.
+**Status:** All partials closed. Migration `005_phase7` applied. 116 tests passing, lint clean.
 
 This document audits the implementation plan against what actually exists in the codebase.
 
@@ -12,13 +12,15 @@ This document audits the implementation plan against what actually exists in the
 | Category          | Done | Partial | Missing |
 |-------------------|------|---------|---------|
 | Data Model        | 5    | 0       | 1       |
-| Invariants / Indexing | 3 | 0    | 1       |
-| MCP Tools         | 0    | 1       | 1       |
-| Security / Governance | 3 | 1     | 0       |
+| Invariants / Indexing | 4 | 0    | 0       |
+| MCP Tools         | 1    | 0       | 1       |
+| Security / Governance | 4 | 0     | 0       |
 | Observability     | 0    | 0       | 2       |
 | CLI / Installer   | 5    | 0       | 1       |
 | Retrieval Quality | 2    | 0       | 3       |
-| **Total**         | **18** | **2** | **9**   |
+| **Total**         | **21** | **0** | **7**   |
+
+(One missing item removed: indexing section is now fully complete.)
 
 ---
 
@@ -27,17 +29,19 @@ This document audits the implementation plan against what actually exists in the
 | # | Item | Status | Details |
 |---|------|--------|---------|
 | 1 | Loopback default binding | **DONE** | `config.py` + `.env.example` host → `127.0.0.1` |
-| 2 | RetrievalEvent fields | **DONE** | Added `request_id`, `selected_chunk_ids`, `generation_id`, `stale_count` via migration `004_phase6` |
-| 3 | Memory model fields | **DONE** | Added `author`, `expiry_time` via migration `004_phase6` |
-| 4 | IndexGeneration chunker_version | **DONE** | Added column via migration `004_phase6`, set in indexer |
-| 5 | Chunk dedup constraint | **DONE** | `UNIQUE(generation_id, content_hash)` via migration `004_phase6` (deduplicates existing data) |
-| 6 | Repository deletion | **DONE** | `DELETE /api/repositories/{id}` + `repo-intel repo remove <id>` CLI |
-| 7 | Freshness metadata in search | **DONE** | `generation_created_at`, `is_stale` on `SearchResult` + stale warnings in API response |
-| 8 | Stale evidence labeling | **DONE** | Stale hits flagged + warning messages in search response |
-| 9 | Backup/restore CLI | **DONE** | `repo-intel backup` / `repo-intel restore` commands |
-| 10 | Backup/restore scripts | **DONE** | `scripts/restore.sh` complementing existing `scripts/backup.sh` |
-| 11 | Uninstall flow | **DONE** | `scripts/uninstall.sh [--keep-data] [--dry-run]` |
-| 12 | MCP connectivity test | **DONE** | `scripts/install.sh` now tests MCP endpoint |
+| 2 | RetrievalEvent fields | **DONE** | Added via migration `004_phase6` |
+| 3 | Memory model fields | **DONE** | Added via migration `004_phase6` |
+| 4 | IndexGeneration chunker_version | **DONE** | Added via migration `004_phase6` |
+| 5 | Chunk dedup constraint | **DONE** | Via migration `004_phase6` |
+| 6 | Repository deletion | **DONE** | `DELETE` endpoint + CLI |
+| 7 | Freshness metadata in search | **DONE** | Per-hit freshness + stale warnings |
+| 8 | Stale evidence labeling | **DONE** | Stale hits flagged in API response |
+| 9 | Backup/restore CLI + scripts | **DONE** | CLI + `scripts/restore.sh` |
+| 10 | Uninstall flow | **DONE** | `scripts/uninstall.sh` |
+| 11 | MCP connectivity test | **DONE** | `scripts/install.sh` tests MCP |
+| 12 | Stale chunk DB filtering | **DONE** | `Chunk.stale` column, migration `005_phase7`, all 3 search queries filter stale, indexer marks old gens stale |
+| 13 | MCP tool naming alignment | **DONE** | `memory_search`, `memory_record` alias, `task_resume` alias all resolve |
+| 14 | Log credential redaction | **DONE** | `CredentialFilter` on root logger strips tokens, passwords, keys from log output |
 
 ---
 
@@ -61,16 +65,14 @@ Added `chunker_version` column via migration `004_phase6`. Indexer sets it to `"
 
 ## 2. Indexing / Invariants Gaps
 
-### 2.1 Stale chunk marking — **MISSING**
-Plan §5 line 236: *"On file modification, mark affected chunks stale immediately and refresh them asynchronously."*
-
-Currently: indexer detects changes via polling hash comparison, then re-scans the entire repo. No `stale` flag on `Chunk` model. No immediate marking mechanism.
+### 2.1 Stale chunk marking — **DONE** ✅
+`Chunk.stale` boolean column (migration `005_phase7`). On each successful index run, the indexer marks all chunks belonging to non-active generations as stale. Migration back-fills existing stale rows.
 
 ### 2.2 Chunk-level deduplication — **DONE** ✅
 `UNIQUE(generation_id, content_hash)` constraint added. Migration pre-cleans duplicates.
 
-### 2.3 Stale chunk filtering during retrieval — **PARTIAL**
-Search results now carry `is_stale` flag and warning messages. No DB-level exclusion of stale chunks yet.
+### 2.3 Stale chunk filtering during retrieval — **DONE** ✅
+All three search sub-queries (exact, FTS, vector) now include `AND c.stale = false`. Stale chunks are never returned in search results.
 
 ---
 
@@ -79,10 +81,8 @@ Search results now carry `is_stale` flag and warning messages. No DB-level exclu
 ### 3.1 `repo_dependencies` — **MISSING**
 Plan §6 line 304 lists this tool: "bounded, evidence-linked dependency graph". Depends on `symbol_edges` table (item 1.1).
 
-### 3.2 Tool naming mismatch — **PARTIAL**
-Plan specifies `memory_search`, `memory_record`, `task_resume`.
-Actual names: `memory_read`, `memory_write`, `checkpoint_get`.
-Functionally equivalent but contract names differ from plan.
+### 3.2 Tool naming mismatch — **DONE** ✅
+Plan names now resolve: `memory_search` (canonical), `memory_record` (alias → `memory_write`), `task_resume` (alias → `checkpoint_get`).
 
 ---
 
@@ -94,8 +94,8 @@ Functionally equivalent but contract names differ from plan.
 ### 4.2 Repository deletion — **DONE** ✅
 `DELETE /api/repositories/{id}` + `repo-intel repo remove <id>` CLI command (with confirmation).
 
-### 4.3 Log credential redaction — **PARTIAL**
-Content is redacted before storage (Phase 6). No log-level filters to strip credentials from log output if accidentally logged.
+### 4.3 Log credential redaction — **DONE** ✅
+`CredentialFilter` attached to root logger via `setup_logging()`. Strips GitHub tokens, AWS keys, connection-string passwords, private-key headers, bearer tokens, and password assignments from log messages and args.
 
 ---
 
@@ -169,12 +169,14 @@ From plan §14, cross-referenced:
 - [x] OpenCode can invoke MCP tools without overwriting model config
 - [x] Cross-session checkpoint and memory retrieval works
 - [ ] **Compaction continuity** — hooks not implemented (Phase 5, explicitly deferred)
-- [x] **Unsupported/stale/conflicting evidence labeled** — staleness now flagged ✅
+- [x] **Unsupported/stale/conflicting evidence labeled** — stale chunks filtered at DB level ✅
 - [x] **Security tests cover path traversal and secrets** (Phase 6)
-- [ ] **Prompt-injection defense tested** — not implemented
-- [ ] **Evaluation report** — benchmark suite missing
+- [x] **Log credential redaction** — `CredentialFilter` strips credentials from log output ✅
+- [ ] **Prompt-injection defense tested** — not implemented (defer to v1.1)
+- [ ] **Evaluation report** — benchmark suite missing (defer to v1.1)
 - [x] **User guide, troubleshooting guide** — docs done
 - [x] **Backup/restore** — scripts + CLI commands working ✅
+- [x] **MCP tool naming matches plan** — aliases resolve `memory_search`, `memory_record`, `task_resume` ✅
 
 ---
 
@@ -186,11 +188,14 @@ Items that can be **deferred beyond v1.0 MVP** (non-goals or optional):
 - Symbol-neighbor expansion (plan says "bounded", can be v1.1)
 - Prompt-injection defense (plan lists it as evaluation test case, not core feature)
 - OpenCode lifecycle hooks / compaction (Phase 5, deferred)
+- Benchmark suite + evaluation docs (v1.1)
+- `symbol_edges` table + `repo_dependencies` tool (v1.1, requires AST analysis)
 
 Items that should be **done for v1.0**:
 - [x] Backup/restore working end-to-end
-- [x] Stale evidence labeling
+- [x] Stale evidence labeling + DB-level stale chunk filtering
 - [x] Repository deletion
 - [x] Default loopback binding
 - [x] Freshness metadata in search results
-- [ ] `symbol_edges` table (if `repo_dependencies` is required for v1.0)
+- [x] MCP tool naming matches plan
+- [x] Log credential redaction
