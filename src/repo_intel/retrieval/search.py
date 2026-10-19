@@ -209,6 +209,53 @@ async def _semantic_candidates(
 
 
 # ---------------------------------------------------------------------------
+# Symbol-neighbor expansion (bounded)
+# ---------------------------------------------------------------------------
+
+
+async def _symbol_candidates(
+    session: AsyncSession,
+    query: str,
+    repository_id: str | None,
+    generation_ids: list[str],
+) -> dict[str, int]:
+    """Return {chunk_id: rank} for chunks whose symbol_name matches *query*.
+
+    When the query looks like an identifier (e.g. a function or class name),
+    we return neighbors that share the same symbol name or reference it,
+    bounded to _CANDIDATE_LIMIT results.
+    """
+    if not generation_ids:
+        return {}
+
+    # Only activate when query looks like an identifier
+    # (short string, starts/ends with word chars, no spaces/punctuation)
+    import re  # noqa: PLC0415
+    if not re.match(r"^[a-zA-Z_]\w{0,127}$", query):
+        return {}
+
+    subquery = (
+        select(Chunk.id, Chunk.symbol_name)
+        .where(
+            Chunk.generation_id.in_(generation_ids),
+            Chunk.stale == False,  # noqa: E712
+            Chunk.symbol_name.isnot(None),
+        )
+    )
+    rows = await session.execute(subquery)
+
+    results: dict[str, int] = {}
+    for chunk_id, symbol_name in rows:
+        cid = str(chunk_id)
+        if symbol_name and query.lower() in symbol_name.lower():
+            results[cid] = len(results) + 1
+            if len(results) >= _CANDIDATE_LIMIT:
+                break
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Reciprocal rank fusion
 # ---------------------------------------------------------------------------
 
@@ -364,7 +411,7 @@ async def hybrid_search(
         logger.warning("No active index generations found for search scope")
         return []
 
-    # 2. Run all three candidate retrieval modes
+    # 2. Run all four candidate retrieval modes (exact, FTS, vector, symbol)
     exact = await _exact_candidates(
         session, effective_query, request.repository_id, generation_ids
     )
@@ -374,11 +421,14 @@ async def hybrid_search(
     semantic = await _semantic_candidates(
         session, effective_query, request.repository_id, generation_ids
     )
+    symbol = await _symbol_candidates(
+        session, effective_query, request.repository_id, generation_ids
+    )
 
     # 3. Fuse
     fused = _rrf_fuse(
-        [exact, lexical, semantic],
-        ["exact", "lexical", "semantic"],
+        [exact, lexical, semantic, symbol],
+        ["exact", "lexical", "semantic", "symbol"],
     )
 
     if not fused:
@@ -426,7 +476,7 @@ async def hybrid_search(
 
     # 8. Apply minimum score filter
     if request.min_score > 0:
-        max_score = 3.0 / (_RRF_K + 1)
+        max_score = 4.0 / (_RRF_K + 1)
         results = [
             r for r in results
             if (r.score / max_score if max_score else 0) >= request.min_score

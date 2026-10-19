@@ -768,6 +768,89 @@ def restore(
         raise typer.Exit(1)
 
 
+# ------------------------------------------------------------------
+# mcp (sub-app for MCP configuration)
+# ------------------------------------------------------------------
+mcp_cli = typer.Typer(help="Configure MCP (Model Context Protocol) clients.")
+cli.add_typer(mcp_cli, name="mcp")
+
+
+@mcp_cli.command("configure")
+def mcp_configure(
+    client: str = typer.Option(
+        "opencode", "--client", "-c",
+        help="Target client to configure (default: opencode)",
+    ),
+    host: str | None = typer.Option(
+        None, "--host", help="MCP server host (default: from settings)",
+    ),
+    port: int | None = typer.Option(
+        None, "--port", help="MCP server port (default: from settings)",
+    ),
+    transport: str = typer.Option(
+        "stdio", "--transport", "-t",
+        help="Transport protocol (stdio or sse)",
+    ),
+) -> None:
+    """Generate MCP client configuration and apply it.
+
+    Writes the configuration so that the target client (e.g. OpenCode)
+    can connect to this repo_intel MCP server.
+    """
+    import json  # noqa: PLC0415
+    import os  # noqa: PLC0415
+
+    settings = get_settings()
+    mcp_host = host or settings.host
+    mcp_port = port or settings.port
+
+    console.print(f"[bold blue]Configuring MCP for client:[/bold blue] {client}")
+
+    # Build the MCP config payload
+    config = {
+        "mcpServers": {
+            "repo_intel": {
+                "transport": transport,
+                "command": "repo-intel",
+                "args": ["mcp", "serve"] if transport == "stdio" else [],
+                "url": f"http://{mcp_host}:{mcp_port}/mcp"
+                if transport == "sse"
+                else None,
+                "host": mcp_host,
+                "port": mcp_port,
+            }
+        }
+    }
+
+    # Remove null values
+    server = config["mcpServers"]["repo_intel"]
+    if transport == "stdio":
+        server.pop("url", None)
+    else:
+        server.pop("command", None)
+        server.pop("args", None)
+
+    # Determine where to write the config
+    if client == "opencode":
+        config_dir = os.path.expanduser("~/.config/opencode")
+        config_path = os.path.join(config_dir, "mcp.json")
+    else:
+        config_path = os.path.join(os.getcwd(), f"mcp-{client}.json")
+
+    console.print(f"\n[bold]Transport:[/bold] {transport}")
+    console.print(f"[bold]Host:[/bold] {mcp_host}:{mcp_port}")
+    console.print(f"[bold]Config path:[/bold] {config_path}")
+    console.print(f"\n[bold]Config:[/bold]\n{json.dumps(config, indent=2)}")
+
+    if typer.confirm("\nWrite configuration file?"):
+        os.makedirs(os.path.dirname(config_path) or ".", exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+        console.print(f"\n[bold green]Configuration written to {config_path}[/bold green]")
+    else:
+        console.print("\n[yellow]Configuration not written.[/yellow]")
+
+
 # --- Run from command line ---
 if __name__ == "__main__":
     cli()
