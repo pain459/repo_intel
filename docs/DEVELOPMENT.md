@@ -1,38 +1,8 @@
 # Development Guide
 
-Architecture overview, technology stack, and development workflow for repo_intel.
+Development workflow, testing, migrations, and monitoring for repo_intel.
 
----
-
-## Architecture
-
-```
-┌──────────────────────┐       MCP (Streamable HTTP)       ┌────────────────────┐
-│    OpenCode Agent    │  ──────────────────────────────▶   │  repo_intel API    │
-│  (tools.repo_intel*) │                                    │  FastAPI + MCP     │
-└──────────────────────┘         JSON-RPC responses         │  :8765             │
-                                                             ├──────────────────┤
-                                                             │  worker          │
-                                                             │  (background     │
-                                                             │   indexing jobs) │
-                                                             ├─────────────┬────┤
-                                                             │  pgvector   │    │
-                                                             │  pg16       │    │
-                                                             └─────────────┴────┘
-```
-
-### Components
-
-| Component | Technology | Role |
-|-----------|-----------|------|
-| API | FastAPI + Uvicorn | REST endpoints, MCP server, health checks, Prometheus metrics |
-| Worker | Custom async loop | Background repository indexing, stale chunk cleanup, index refresh |
-| Database | PostgreSQL 16 + pgvector | Stores chunks, embeddings, symbols, memory, checkpoints, dependencies |
-| Embeddings | Ollama (`nomic-embed-text`) | Vector embeddings for semantic search |
-| MCP | fastmcp | 14 tools exposed to coding agents via JSON-RPC 2.0 |
-| CLI | Typer + Rich | `repo-intel` command for admin operations |
-| Metrics | Prometheus client | Counters, histograms, gauges on `/metrics` |
-| Monitoring | Grafana + Prometheus | Dashboards at `http://localhost:3000` |
+> **For full architecture details** (HLD, LLD, data model, request flows, memory system), see **[docs/ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 ---
 
@@ -45,7 +15,7 @@ Architecture overview, technology stack, and development workflow for repo_intel
 | ORM | SQLAlchemy 2.0 (async), Alembic migrations |
 | Database | PostgreSQL 16 + pgvector extension |
 | Embeddings | Ollama (`nomic-embed-text`) |
-| MCP server | fastmcp ≥ 2.3.1 |
+| MCP server | fastmcp >= 2.3.1 |
 | CLI | Typer + Rich |
 | Structured logging | structlog |
 | Testing | pytest + pytest-asyncio |
@@ -53,61 +23,6 @@ Architecture overview, technology stack, and development workflow for repo_intel
 | Containerization | Docker Compose |
 | Monitoring | Prometheus + Grafana |
 | Packaging | setuptools, pyproject.toml |
-
----
-
-## Data Model
-
-Key tables:
-
-| Table | Purpose |
-|-------|---------|
-| `repositories` | Registered repos, paths, language, status |
-| `index_chunks` | Source chunks with embeddings, metadata |
-| `index_status` | Per-repo indexing state and progress |
-| `symbols` | Detected functions, classes, variables |
-| `symbol_edges` | Heuristic dependency graph between symbols |
-| `memory_records` | Agent memory: decisions, preferences, observations |
-| `session_checkpoints` | Session state for compaction continuity |
-| `retrieval_events` | Audit log of search queries and results |
-
-Migrations managed via Alembic. Run `docker compose exec api alembic current` to check applied revisions.
-
----
-
-## Search Pipeline
-
-repo_intel uses **4-way hybrid retrieval** with Reciprocal Rank Fusion (RRF, k=60):
-
-1. **Exact** — substring match on chunk content
-2. **Lexical** — PostgreSQL full-text search
-3. **Semantic** — pgvector cosine similarity on embeddings
-4. **Symbol** — symbol-name expansion for identifiers
-
-Each sub-search returns scored results. RRF fuses them into a single ranked list. Queries pass through a prompt-injection guard before execution.
-
----
-
-## MCP Tools (14 total)
-
-| Tool | Purpose |
-|------|---------|
-| `repo_list` | List registered repositories |
-| `repo_search` | Hybrid search across indexed repos |
-| `repo_symbol` | Find symbol definitions by name |
-| `repo_context` | Build a curated evidence pack for a task |
-| `repo_dependencies` | Traverse dependency graph |
-| `index_status` | Detailed index state for a repo |
-| `memory_write` | Save a decision, preference, or observation |
-| `memory_record` | (alias for memory_write) |
-| `memory_search` | Search saved memories |
-| `checkpoint_save` | Save progress for later resumption |
-| `checkpoint_get` | Retrieve latest checkpoint |
-| `task_resume` | (alias for checkpoint_get) |
-| `compaction_checkpoint_save` | Checkpoint optimized for compaction recovery |
-| `session_bootstrap` | Full session restore after compaction |
-
-Tools are instrumented with Prometheus counters (success/error) and latency histograms.
 
 ---
 
@@ -172,4 +87,6 @@ Only do this in development. Always export before destroying volumes in producti
 ## Related
 
 - [QUICKSTART.md](QUICKSTART.md) — Step-by-step setup for new users
+- [ARCHITECTURE.md](ARCHITECTURE.md) — HLD, LLD, request flows, data model, memory system
+- [OPENCODE_SETUP.md](OPENCODE_SETUP.md) — Connect OpenCode, configure MCP
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Debugging and crash recovery

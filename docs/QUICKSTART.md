@@ -404,6 +404,7 @@ tools.repo_intel["repo_context"](task_description="Add login retry logic", token
 
 ## What's next?
 
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — HLD, LLD, request flows, data model, memory system, observability
 - **[OPENCODE_SETUP.md](OPENCODE_SETUP.md)** — Connect OpenCode, configure MCP, model setup, full tool reference
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** — Architecture, tech stack, development workflow
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** — Dev workflow, testing, migrations, adding MCP tools
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — Debugging and crash recovery

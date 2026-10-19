@@ -33,8 +33,9 @@ See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** — clone, configure, start the
 |----------|----------------|
 | [docs/QUICKSTART.md](docs/QUICKSTART.md) | Step-by-step setup for new users |
 | [docs/OPENCODE_SETUP.md](docs/OPENCODE_SETUP.md) | Connect OpenCode, configure MCP, use tools in Code Mode |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Architecture, tech stack, development workflow |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Development workflow |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Debugging, crash recovery, emergency procedures |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | HLD, LLD, request flows, data model, memory system, configuration |
 
 ---
 
