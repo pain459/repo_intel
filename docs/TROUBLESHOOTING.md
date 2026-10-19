@@ -230,6 +230,44 @@ services:
           memory: 4G
 ```
 
+## Monitoring Issues
+
+### "Where are the Prometheus metrics?"
+
+repo_intel exposes a `/metrics` endpoint (Prometheus format) on the API server.
+It does **not** include a Prometheus container. Add your own scraper:
+
+```yaml
+# prometheus.yaml
+scrape_configs:
+  - job_name: "repo_intel"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["your-host:8765"]
+    metrics_path: "/metrics"
+```
+
+Custom metrics: `repo_intel_search_requests_total`, `repo_intel_search_latency_seconds`,
+`repo_intel_index_chunks_total`. Standard Python metrics are also included.
+
+### "Worker shows no tick count"
+
+The worker is healthy even without ticks if there are no pending jobs:
+
+```bash
+# Check for pending jobs
+docker compose exec postgres psql -U repo_intel repo_intel -c \
+  "SELECT count(*) FROM index_jobs WHERE status='pending';"
+# 0 = worker is idle (healthy)
+```
+
+### "API logs show 'marked stale' but no compaction occurred"
+
+That's normal. The AutoCheckpointScheduler runs every 15 minutes and marks old
+checkpoints stale. This is preventive maintenance, not an error.
+
+---
+
 ## Performance Issues
 
 ### Slow Search Queries (>5 seconds)

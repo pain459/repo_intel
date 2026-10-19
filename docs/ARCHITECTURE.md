@@ -24,7 +24,8 @@ High-level design and data-flow diagrams for repo_intel.
 │  │  /health/*         │    │  ┌──────────────────────────┐    │ │
 │  │  /mcp/ ← FastMCP   │    │  │  Index Pipeline          │    │ │
 │  │  /api/* ← REST     │    │  │  discovery → chunk → emb  │    │ │
-│  │  /workspace/*      │    │  └──────────────────────────┘    │ │
+│  │  /health/*         │    │  └──────────────────────────┘    │ │
+│  │  /metrics          │    │                                  │ │
 │  └────────┬───────────┘    └──────────────┬───────────────────┘ │
 │           │                               │                     │
 │           └─────────────┬─────────────────┘                     │
@@ -54,7 +55,8 @@ High-level design and data-flow diagrams for repo_intel.
 | **CLI** | `cli.py` | Entry point for `repo-intel` commands (serve, index, repo add, doctor, status) |
 | **Config** | `config.py` | Settings from env vars / `.env` (profile, DB URL, Ollama, indexing params) |
 | **FastAPI App** | `api/app.py` | ASGI factory, lifespan (DB connect/disconnect), mounts `/mcp/`, `/api/`, `/health/`, `/workspace/` |
-| **MCP Server** | `mcp/fastmcp.py` | FastMCP server with 9 async tool handlers → calls service-layer functions |
+| **MCP Server** | `mcp/fastmcp.py` | FastMCP server with 14 async tool handlers → calls service-layer functions |
+| **Compaction** | `compaction/manager.py` | Auto-checkpoint scheduler, stale invalidation, session bootstrap |
 | **REST MCP Proxy** | `api/mcp.py` | Legacy `POST /api/mcp/call` for non-MCP clients |
 | **Search API** | `api/search.py` | REST search endpoints |
 | **Memory API** | `api/memory.py` | REST CRUD for agent memories |
@@ -312,6 +314,69 @@ Agent starts session
   └──────────────────┘
 ```
 
+## Compaction Continuity
+
+```
+AutoCheckpointScheduler (in API container)
+       │
+       │ Every 15 min (configurable)
+       ▼
+┌─────────────────────┐
+│ Scan checkpoints    │  ← find checkpoints > 4 hours old
+│ older than threshold │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│ Mark stale in        │  ← evidence.compaction.marked_stale_at
+│ evidence dict       │
+└─────────────────────┘
+
+Agent before compaction:
+   └──► compaction_checkpoint_save(objective, session_id, ...)
+                 │
+                 ▼
+        ┌─────────────────┐
+        │ Tag with        │
+        │ compaction mark │  ← evidence.compaction.save_type="pre_compaction"
+        └─────────────────┘
+
+Agent after compaction/restart:
+   └──► session_bootstrap(session_id, repository_id)
+                 │
+                 ▼
+        ┌───────────────────────────────┐
+        │ Return:                       │
+        │  • Latest checkpoint           │
+        │  • Up to 20 verified memories  │
+        │  • Scoped to session/repo      │
+        └───────────────────────────────┘
+```
+
+**Design notes:**
+- No OpenCode lifecycle hooks required (unreliable, version-dependent)
+- Auto-checkpoint scheduler runs as a background task in the API container
+- Stale checkpoints are marked in `evidence.compaction`, not deleted
+- Agents call `compaction_checkpoint_save` explicitly before compaction
+- Agents call `session_bootstrap` to reconstruct context after compaction
+
+## Dependency Graph
+
+```
+Symbol ──► SymbolEdge ──► Symbol
+(from)     (relation)    (to)
+
+Relation types: "imports", "calls", "extends", "uses"
+Confidence: 0.0 – 1.0 (heuristic)
+Evidence: source file, line numbers
+
+During indexing:
+   edge_detector scans Python/JS import and call patterns → writes to symbol_edges
+
+During search:
+   repo_dependencies MCP tool performs BFS traversal (bounded depth, max 50 edges)
+```
+
 ## Directory Structure
 
 ```
@@ -333,13 +398,16 @@ repo_intel/
 │   ├── api/                  # FastAPI endpoints
 │   │   ├── app.py            # Factory, lifespan, route mounting
 │   │   ├── health.py         # /health/live, /health/ready
+│   │   ├── metrics.py        # /metrics (Prometheus)
 │   │   ├── mcp.py            # REST MCP proxy (POST /api/mcp/call)
 │   │   ├── search.py         # REST search
 │   │   ├── memory.py         # REST memory CRUD
 │   │   ├── checkpoints.py    # REST checkpoint CRUD
 │   │   └── repositories.py   # REST repo registration
+│   ├── compaction/           # Compaction continuity (Phase 5)
+│   │   └── manager.py        # AutoCheckpointScheduler, session_bootstrap
 │   ├── mcp/                  # MCP protocol
-│   │   ├── fastmcp.py        # FastMCP server, 9 async tool handlers
+│   │   ├── fastmcp.py        # FastMCP server, 14 async tool handlers
 │   │   └── server.py         # Tool implementations (used by REST proxy)
 │   ├── db/                   # Database layer
 │   │   ├── models.py         # SQLAlchemy async models
@@ -348,14 +416,20 @@ repo_intel/
 │   │   ├── indexer.py        # Orchestration (discover → chunk → embed)
 │   │   ├── discovery.py      # git ls-files + extension filter
 │   │   ├── chunker.py        # 200-line windows, 20% overlap
+│   │   ├── edge_detector.py  # Heuristic import/call edge detection
 │   │   ├── embeddings/       # Embedding generation (calls Ollama)
 │   │   └── symbols/          # AST-based symbol extraction
 │   ├── retrieval/            # Search & retrieval
 │   │   ├── search.py         # Hybrid search pipeline (exact+FTS+vector, RRF)
 │   │   └── types.py          # Result dataclasses
-│   └── memory/               # Agent memory
-│       └── (models + lifecycle in db/models.py)
-└── tests/                    # pytest test suite
+│   ├── benchmark/            # Retrieval quality benchmarks
+│   │   └── runner.py         # Benchmark runner (10 default queries)
+│   ├── memory/               # Agent memory
+│   │   └── (models + lifecycle in db/models.py)
+│   └── security/             # Security
+│       ├── redaction.py      # Content redaction (secrets, API keys)
+│       └── prompt_guard.py   # Prompt-injection defense
+└── tests/                    # pytest test suite (154 tests)
 ```
 
 ## Technology Stack

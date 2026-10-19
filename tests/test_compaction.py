@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import warnings
+
 import pytest
 
 from repo_intel.compaction.manager import (
@@ -19,17 +22,28 @@ from repo_intel.db.session import get_session_factory
 class TestSchedulerLifecycle:
     def test_start_stop(self) -> None:
         s = AutoCheckpointScheduler(interval_s=9999)
-        s.start()
-        assert s._running is True
-        s.stop()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            s.start()
+            assert s._running is True
+            s.stop()
         assert s._running is False
+        # Clean up the orphaned task
+        if s._task is not None:
+            s._task.cancel()
+            asyncio.get_event_loop().run_until_complete(s._task)
 
     def test_start_idempotent(self) -> None:
         s = AutoCheckpointScheduler(interval_s=9999)
-        s.start()
-        s.start()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            s.start()
+            s.start()
         assert s._running is True
         s.stop()
+        if s._task is not None:
+            s._task.cancel()
+            asyncio.get_event_loop().run_until_complete(s._task)
 
 
 # ---------------------------------------------------------------------------
