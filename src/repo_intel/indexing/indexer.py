@@ -24,6 +24,27 @@ from repo_intel.security.redaction import redact_content
 
 logger = logging.getLogger(__name__)
 
+_MAX_EXC_MSG_LEN = 512
+
+
+def _safe_exc_msg(exc: Exception) -> str:
+    """Return a short, safe version of an exception message.
+
+    SQLAlchemy / psycopg exceptions embed full parameter dicts that contain
+    chunk content.  Strip those out so they never leak into logs.
+    """
+    msg = str(exc)
+    # Strip the [parameters: ...] and [SQL: ...] blocks that SQLAlchemy appends
+    # and that contain embedding/chunk payloads.
+    for marker in ("[SQL:", "[parameters:"):
+        idx = msg.find(marker)
+        if idx >= 0:
+            msg = msg[:idx].rstrip()
+            break
+    if len(msg) > _MAX_EXC_MSG_LEN:
+        msg = msg[:_MAX_EXC_MSG_LEN] + "…"
+    return msg
+
 
 # ---------------------------------------------------------------------------
 # Repository scanning
@@ -65,7 +86,6 @@ async def scan_repository(
 
     if not discovered:
         generation.state = "active"
-        await session.commit()
         # Mark job complete
         await _complete_job(session, job_id)
         return 0
@@ -213,7 +233,6 @@ async def scan_repository(
     generation.chunk_count = total_chunks
     generation.state = "active"
 
-    await session.commit()
     await _complete_job(session, job_id)
 
     logger.info("Indexed %d chunks for repo %s", total_chunks, repo.name)
@@ -354,20 +373,36 @@ async def worker_tick(session: AsyncSession) -> None:
     jobs = list(await session.scalars(pending_stmt))
 
     for job in jobs:
+        # Capture scalar fields before potentially mutating them,
+        # so exception logging never touches stale ORM objects
+        _job_id = job.id
+        _repo_id = job.repository_id
+
         # Mark running
         await session.execute(
             update(IndexJob)
-            .where(IndexJob.id == job.id)
+            .where(IndexJob.id == _job_id)
             .values(status="running")
         )
 
         try:
             if job.job_type == "initial_scan":
-                await scan_repository(session, job.repository_id, job.id)
+                await scan_repository(session, _repo_id, _job_id)
             else:
                 logger.warning("Unknown job type %s, skipping", job.job_type)
-                await _fail_job(session, job.id, f"Unknown job type: {job.job_type}")
+                await _fail_job(session, _job_id, f"Unknown job type: {job.job_type}")
         except Exception as exc:
-            logger.exception("Job %s failed: %s", job.id, exc)
-            await _fail_job(session, job.id, str(exc))
-            await session.commit()
+            safe_msg = _safe_exc_msg(exc)
+            logger.error("Job %s: failed - %s", _job_id, safe_msg)
+            # Flush errors (e.g. constraint violations) leave the session in
+            # a PendingRollbackError state.  Roll back so we can still mark
+            # the job as failed.
+            await session.rollback()
+            try:
+                await _fail_job(session, _job_id, safe_msg)
+            except Exception:
+                logger.error(
+                    "Job %s: session unusable; aborting remaining ticks",
+                    _job_id,
+                )
+                raise

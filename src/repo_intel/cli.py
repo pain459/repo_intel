@@ -68,9 +68,15 @@ def worker() -> None:
 
 async def _worker_loop() -> None:
     """Worker loop: poll for pending jobs and run them."""
-    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
-    from repo_intel.indexing.indexer import worker_tick  # noqa: PLC0415
+    import logging
 
+    from repo_intel.db.session import get_session_factory  # noqa: PLC0415
+    from repo_intel.indexing.indexer import (  # noqa: PLC0415
+        _safe_exc_msg,
+        worker_tick,
+    )
+
+    _loop_logger = logging.getLogger("repo_intel.worker_loop")
     settings = get_settings()
     console.print("[green]Worker running. Press Ctrl+C to stop.[/green]")
     tick = 0
@@ -79,9 +85,10 @@ async def _worker_loop() -> None:
             try:
                 await worker_tick(session)
                 await session.commit()
-            except Exception:
+            except Exception as exc:
+                _safe = _safe_exc_msg(exc)
                 await session.rollback()
-                raise
+                _loop_logger.error("Tick %d failed, rolled back: %s", tick, _safe)
         tick += 1
         if tick % 10 == 0:
             console.print(f"  tick={tick}", style="dim")
