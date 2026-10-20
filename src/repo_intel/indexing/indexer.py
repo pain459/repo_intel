@@ -96,10 +96,11 @@ async def scan_repository(
     # Collect chunk objects for embedding after DB flush
     pending_chunks: list[tuple[Chunk, str]] = []  # (chunk_rec, content_text)
 
-    # Load existing files for this repo (for incremental diff)
+    # Load existing files for this repo (for incremental diff).
+    # Include soft-deleted rows so that files reappearing on disk are
+    # reused rather than re-inserted (which would hit uq_repo_files_path).
     existing_stmt = select(FileRecord).where(
         FileRecord.repository_id == repo_id,
-        FileRecord.deleted == False,  # noqa: E712
     )
     existing_files = {f.relative_path: f for f in await session.scalars(existing_stmt)}
 
@@ -113,6 +114,8 @@ async def scan_repository(
         existing = existing_files.get(df.relative_path)
         if existing and existing.content_hash == df.content_hash and not existing.worktree_dirty:
             # No change, keep existing chunks
+            # Reinstate if it was soft-deleted by a previous generation
+            existing.deleted = False
             file_ids[df.relative_path] = existing.id
             continue
 
@@ -136,7 +139,11 @@ async def scan_repository(
             existing.content_hash = df.content_hash
             existing.size_bytes = df.size_bytes
             existing.language = df.language
+            # Reinstate if it was soft-deleted by a previous generation
+            existing.deleted = False
         elif existing:
+            # Reinstate soft-deleted rows that still exist on disk
+            existing.deleted = False
             file_ids[df.relative_path] = existing.id
             continue
 
