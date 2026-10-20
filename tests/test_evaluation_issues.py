@@ -542,3 +542,255 @@ class TestRESTToolCompleteness:
         mems = data.get("memories", [])
         author_mem = [m for m in mems if m.get("author") == "regression-test-agent"]
         assert len(author_mem) >= 1, "Author not preserved in memory"
+
+
+# ---------------------------------------------------------------------------
+# Issue 7: Python function kind classification (def and async def)
+# ---------------------------------------------------------------------------
+
+
+class TestPythonFunctionKind:
+    """Verify Python def and async def are classified as kind=function."""
+
+    def test_def_is_function_kind(self) -> None:
+        """Plain 'def' boundaries should produce kind=function."""
+        code = (
+            "def authenticate(db, email, password):\n"
+            "    user = get_user(db, email)\n"
+            "    return user\n"
+        )
+        boundaries = _find_boundaries(code.splitlines(), "python")
+        assert len(boundaries) >= 1
+        assert boundaries[0][2] == "function", (
+            f"def classified as {boundaries[0][2]} instead of function"
+        )
+        assert boundaries[0][3] == "authenticate"
+
+    def test_async_def_is_function_kind(self) -> None:
+        """'async def' boundaries should produce kind=function."""
+        code = (
+            "async def get_db():\n"
+            "    db = SessionLocal()\n"
+            "    yield db\n"
+            "    db.close()\n"
+        )
+        boundaries = _find_boundaries(code.splitlines(), "python")
+        assert len(boundaries) >= 1, "async def not matched"
+        assert boundaries[0][2] == "function", (
+            f"async def classified as {boundaries[0][2]} instead of function"
+        )
+        assert boundaries[0][3] == "get_db"
+
+    def test_indented_async_def(self) -> None:
+        """Indented 'async def' inside a class should still match."""
+        code = (
+            "class MyClass:\n"
+            "    async def fetch(self):\n"
+            "        return data\n"
+        )
+        boundaries = _find_boundaries(code.splitlines(), "python")
+        async_funcs = [b for b in boundaries if b[2] == "function"]
+        assert len(async_funcs) >= 1, "indented async def not matched"
+        assert async_funcs[0][3] == "fetch"
+
+    def test_class_still_class(self) -> None:
+        """Python class declarations should remain kind=class."""
+        code = "class UserModel(Base):\n    name: str\n"
+        boundaries = _find_boundaries(code.splitlines(), "python")
+        assert len(boundaries) >= 1
+        assert boundaries[0][2] == "class"
+        assert boundaries[0][3] == "UserModel"
+
+    def test_symbols_in_db_have_function_kind(self, repo_id, active_gen_ids) -> None:
+        """Indexed Python symbols should predominantly be kind=function."""
+        import asyncio
+
+        async def _check():
+            from repo_intel.db.models import FileRecord
+
+            if not repo_id or not active_gen_ids:
+                return True
+            factory = get_session_factory()
+            async with factory() as session:
+                total = await session.scalar(
+                    select(func.count(Symbol.id)).where(
+                        Symbol.generation_id.in_(active_gen_ids)
+                    )
+                )
+                func_cnt = await session.scalar(
+                    select(func.count(Symbol.id)).where(
+                        Symbol.generation_id.in_(active_gen_ids),
+                        Symbol.kind == "function",
+                    )
+                )
+                if total == 0:
+                    return True
+                ratio = func_cnt / total
+                assert ratio > 0.8, (
+                    f"Only {ratio:.0%} of symbols are kind=function "
+                    f"({func_cnt}/{total}), most Python symbols should be functions"
+                )
+                # Spot-check known Python functions
+                for name in ["authenticate", "get_db", "login_access_token"]:
+                    sym = (
+                        await session.scalars(
+                            select(Symbol).where(
+                                Symbol.name == name,
+                                Symbol.generation_id.in_(active_gen_ids),
+                            ).limit(1)
+                        )
+                    ).first()
+                    if sym:
+                        assert sym.kind == "function", (
+                            f"{name} has kind={sym.kind} instead of function"
+                        )
+                return True
+
+        assert asyncio.run(_check())
+
+
+# ---------------------------------------------------------------------------
+# Issue 8: Memory session_id isolation
+# ---------------------------------------------------------------------------
+
+
+class TestMemorySessionIsolation:
+    """Verify memory_write/read support session_id for cross-session isolation."""
+
+    def test_memory_write_accepts_session_id(self, repo_id) -> None:
+        """memory_write should accept session_id parameter."""
+        resp = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "memory_write",
+                "parameters": {
+                    "kind": "test-session",
+                    "statement": "session isolation test alpha",
+                    "repository_id": repo_id,
+                    "session_id": "test-session-alpha",
+                },
+            },
+        )
+        assert resp.status_code == 200
+
+    def test_memory_read_filters_by_session(self, repo_id) -> None:
+        """memory_read with session_id should only return that session's memories."""
+        # Write to two sessions
+        client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "memory_write",
+                "parameters": {
+                    "kind": "test-session",
+                    "statement": "session beta data",
+                    "repository_id": repo_id,
+                    "session_id": "test-session-beta",
+                },
+            },
+        )
+
+        # Read alpha
+        r_a = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "memory_read",
+                "parameters": {
+                    "repository_id": repo_id,
+                    "session_id": "test-session-alpha",
+                },
+            },
+        )
+        mems_a = r_a.json().get("memories", [])
+        # Should not see beta's data
+        beta_leaked = any("session beta" in m.get("statement", "") for m in mems_a)
+        assert not beta_leaked, "Session beta memory leaked into session alpha read"
+
+        # Read beta
+        r_b = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "memory_read",
+                "parameters": {
+                    "repository_id": repo_id,
+                    "session_id": "test-session-beta",
+                },
+            },
+        )
+        mems_b = r_b.json().get("memories", [])
+        alpha_leaked = any("session alpha" in m.get("statement", "") for m in mems_b)
+        assert not alpha_leaked, "Session alpha memory leaked into session beta read"
+
+        assert len(mems_b) >= 1, "Session beta should have at least 1 memory"
+
+    def test_memory_model_has_session_id_column(self) -> None:
+        """Memory model should have session_id attribute."""
+        from repo_intel.db.models import Memory
+
+        assert hasattr(Memory, "session_id"), "Memory model missing session_id field"
+
+
+# ---------------------------------------------------------------------------
+# Issue 9: Search result metadata completeness
+# ---------------------------------------------------------------------------
+
+
+class TestSearchMetadata:
+    """Verify search results include chunk_id, file, and metadata fields."""
+
+    def test_search_result_has_chunk_id(self, repo_id) -> None:
+        """Search results should include chunk_id."""
+        resp = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "repo_search",
+                "parameters": {
+                    "query": "user",
+                    "repository_id": repo_id,
+                    "limit": 1,
+                },
+            },
+        )
+        assert resp.status_code == 200
+        results = resp.json().get("results", [])
+        assert len(results) >= 1, "Expected at least 1 search result"
+        assert "chunk_id" in results[0], "Search result missing chunk_id"
+
+    def test_search_result_has_file(self, repo_id) -> None:
+        """Search results should include file field."""
+        resp = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "repo_search",
+                "parameters": {
+                    "query": "user",
+                    "repository_id": repo_id,
+                    "limit": 1,
+                },
+            },
+        )
+        results = resp.json().get("results", [])
+        assert len(results) >= 1
+        assert "file" in results[0], "Search result missing file field"
+
+    def test_search_result_has_metadata_dict(self, repo_id) -> None:
+        """Search results should include a metadata dictionary with enrichment."""
+        resp = client.post(
+            "/api/mcp/call",
+            json={
+                "tool": "repo_search",
+                "parameters": {
+                    "query": "user",
+                    "repository_id": repo_id,
+                    "limit": 1,
+                },
+            },
+        )
+        results = resp.json().get("results", [])
+        assert len(results) >= 1
+        assert "metadata" in results[0], "Search result missing metadata field"
+        meta = results[0]["metadata"]
+        assert isinstance(meta, dict)
+        # Metadata should contain enrichment info
+        assert "evidence_kind" in meta
+        assert "retrieval_methods" in meta
+        assert "is_stale" in meta

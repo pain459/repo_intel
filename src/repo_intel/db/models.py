@@ -291,6 +291,8 @@ class Memory(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="candidate")
     evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     source_commit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Agent session that created this memory (for cross-session isolation)
+    session_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     # Who/what created this memory (agent session, user CLI, etc.)
     author: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # When to re-evaluate this memory

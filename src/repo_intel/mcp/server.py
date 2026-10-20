@@ -152,6 +152,8 @@ async def tool_repo_search(
         "num_results": len(results),
         "results": [
             {
+                "chunk_id": str(r.chunk_id),
+                "file": r.path,
                 "path": r.path,
                 "start_line": r.start_line,
                 "end_line": r.end_line,
@@ -159,10 +161,20 @@ async def tool_repo_search(
                 "text": r.text[:2000],
                 "retrieval_methods": r.retrieval_methods,
                 "score": round(r.score, 6),
+                "relevance_reason": r.relevance_reason,
                 "generation_created_at": r.generation_created_at,
                 "is_stale": r.is_stale,
                 "is_truncated": r.is_truncated,
                 "evidence_kind": r.evidence_kind,
+                "metadata": {
+                    "generation_created_at": r.generation_created_at,
+                    "is_stale": r.is_stale,
+                    "is_truncated": r.is_truncated,
+                    "evidence_kind": r.evidence_kind,
+                    "retrieval_methods": r.retrieval_methods,
+                    "relevance_reason": r.relevance_reason,
+                    "content_hash": r.content_hash,
+                },
             }
             for r in results
         ],
@@ -539,6 +551,7 @@ async def tool_memory_write(
     evidence: dict | None = None,
     source_commit: str | None = None,
     author: str | None = None,
+    session_id: str | None = None,
 ) -> dict:
     """Write a new agent memory."""
     from sqlalchemy import select  # noqa: PLC0415
@@ -563,6 +576,7 @@ async def tool_memory_write(
             evidence=evidence,
             source_commit=source_commit,
             author=author,
+            session_id=session_id,
         )
         session.add(memory)
         await session.commit()
@@ -583,6 +597,7 @@ async def tool_memory_read(
     repository_id: str | None = None,
     kind: str | None = None,
     limit: int = 20,
+    session_id: str | None = None,
 ) -> dict:
     """Read agent memories, optionally filtered and scored."""
     from sqlalchemy import select  # noqa: PLC0415
@@ -597,6 +612,8 @@ async def tool_memory_read(
             stmt = stmt.where(Memory.kind == kind)
         if query:
             stmt = stmt.where(Memory.statement.ilike(f"%{query}%"))
+        if session_id:
+            stmt = stmt.where(Memory.session_id == session_id)
 
         rows = await session.scalars(
             stmt.order_by(Memory.id.desc()).limit(limit)
@@ -615,6 +632,7 @@ async def tool_memory_read(
                 "evidence": m.evidence,
                 "source_commit": m.source_commit,
                 "author": m.author,
+                "session_id": m.session_id,
                 "created_at": str(m.created_at),
             }
             for m in memories

@@ -28,7 +28,8 @@ MAX_CHUNK_LEN = 8_000
 # ---------------------------------------------------------------------------
 
 # Python: def / class at column 0 or after decorators
-_PYTHON_FUNC = re.compile(r"^(\s*)def\s+(\w+)\s*\(")
+# Support async def by allowing optional "async " prefix
+_PYTHON_FUNC = re.compile(r"^(\s*)(?:async\s+)?def\s+(\w+)\s*\(")
 _PYTHON_CLASS = re.compile(r"^(\s*)class\s+(\w+)")
 _PYTHON_DECORATOR = re.compile(r"^@")
 
@@ -189,6 +190,7 @@ def _find_boundaries(lines: list[str], language: str) -> list[tuple[int, int, st
                 "function"
                 if "func" in pat_lower or "fn" in pat_lower
                 or "arrow" in pat_lower or "method" in pat_lower
+                or "def\\s" in pat_lower
                 else "class"
             )
             # Find the end of the region by looking for the next boundary at same/lower indent

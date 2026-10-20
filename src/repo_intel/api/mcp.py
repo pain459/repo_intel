@@ -77,6 +77,7 @@ async def call_tool(body: ToolCall) -> dict:
             evidence=body.parameters.get("evidence"),
             source_commit=body.parameters.get("source_commit"),
             author=body.parameters.get("author"),
+            session_id=body.parameters.get("session_id"),
         )
 
     # memory_record is an alias for memory_write
@@ -95,6 +96,7 @@ async def call_tool(body: ToolCall) -> dict:
             evidence=body.parameters.get("evidence"),
             source_commit=body.parameters.get("source_commit"),
             author=body.parameters.get("author"),
+            session_id=body.parameters.get("session_id"),
         )
 
     if body.tool == "memory_read" or body.tool == "memory_search":
@@ -104,6 +106,7 @@ async def call_tool(body: ToolCall) -> dict:
             repository_id=body.parameters.get("repository_id"),
             kind=body.parameters.get("kind"),
             limit=int(body.parameters.get("limit", 20)),
+            session_id=body.parameters.get("session_id"),
         )
 
     if body.tool == "checkpoint_save":
@@ -229,6 +232,7 @@ async def list_tools() -> dict:
                     "kind": {"type": "string", "required": True},
                     "statement": {"type": "string", "required": True},
                     "repository_id": {"type": "string", "required": False},
+                    "session_id": {"type": "string", "required": False},
                     "evidence": {"type": "object", "required": False},
                     "source_commit": {"type": "string", "required": False},
                     "author": {"type": "string", "required": False},
@@ -241,6 +245,7 @@ async def list_tools() -> dict:
                     "kind": {"type": "string", "required": True},
                     "statement": {"type": "string", "required": True},
                     "repository_id": {"type": "string", "required": False},
+                    "session_id": {"type": "string", "required": False},
                     "evidence": {"type": "object", "required": False},
                     "source_commit": {"type": "string", "required": False},
                     "author": {"type": "string", "required": False},
@@ -252,6 +257,7 @@ async def list_tools() -> dict:
                 "parameters": {
                     "query": {"type": "string", "required": False},
                     "repository_id": {"type": "string", "required": False},
+                    "session_id": {"type": "string", "required": False},
                     "kind": {"type": "string", "required": False},
                     "limit": {"type": "integer", "required": False, "default": 20},
                 },
@@ -262,6 +268,7 @@ async def list_tools() -> dict:
                 "parameters": {
                     "query": {"type": "string", "required": False},
                     "repository_id": {"type": "string", "required": False},
+                    "session_id": {"type": "string", "required": False},
                     "kind": {"type": "string", "required": False},
                     "limit": {"type": "integer", "required": False, "default": 20},
                 },
