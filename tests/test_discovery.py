@@ -98,6 +98,76 @@ class TestHelpers:
     def test_detect_language_unknown(self):
         assert _detect_language("foo.xyz") == ""
 
+    def test_detect_language_yaml(self):
+        assert _detect_language("compose.yml") == "yaml"
+
+    def test_detect_language_toml(self):
+        assert _detect_language("pyproject.toml") == "toml"
+
+    def test_detect_language_json(self):
+        assert _detect_language("package.json") == "json"
+
+    def test_detect_language_dockerfile(self):
+        assert _detect_language("Dockerfile") == "dockerfile"
+
+    # ------------------------------------------------------------------
+    # Infrastructure file discovery (regression for post-eval investigation)
+    # ------------------------------------------------------------------
+
+    def test_discovers_yaml_config_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for name in ("compose.yml", "settings.yaml"):
+                p = os.path.join(tmpdir, name)
+                with open(p, "w") as f:
+                    f.write("key: value\n")
+            files = discover_files(tmpdir)
+            rel_paths = [f.relative_path for f in files]
+            assert "compose.yml" in rel_paths
+            assert "settings.yaml" in rel_paths
+
+    def test_discovers_toml_config_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = os.path.join(tmpdir, "pyproject.toml")
+            with open(p, "w") as f:
+                f.write('[project]\nname = "test"\n')
+            files = discover_files(tmpdir)
+            rel_paths = [f.relative_path for f in files]
+            assert "pyproject.toml" in rel_paths
+
+    def test_discovers_json_config_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = os.path.join(tmpdir, "package.json")
+            with open(p, "w") as f:
+                f.write('{"name": "test"}\n')
+            files = discover_files(tmpdir)
+            rel_paths = [f.relative_path for f in files]
+            assert "package.json" in rel_paths
+
+    def test_discovers_dockerfile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = os.path.join(tmpdir, "Dockerfile")
+            with open(p, "w") as f:
+                f.write("FROM python:3.12\n")
+            files = discover_files(tmpdir)
+            rel_paths = [f.relative_path for f in files]
+            assert "Dockerfile" in rel_paths
+
+    def test_config_files_have_language(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cases = [
+                ("compose.yml", "yaml"),
+                ("pyproject.toml", "toml"),
+                ("config.json", "json"),
+            ]
+            for name, expected_lang in cases:
+                p = os.path.join(tmpdir, name)
+                with open(p, "w") as f:
+                    f.write("key: value\n")
+            files = discover_files(tmpdir)
+            by_name = {f.relative_path: f.language for f in files}
+            for name, expected_lang in cases:
+                assert by_name.get(name) == expected_lang
+
     def test_is_binary_true(self):
         with tempfile.NamedTemporaryFile(suffix=".bin") as f:
             f.write(b"\x00\x01\x02")

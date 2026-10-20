@@ -1,6 +1,10 @@
 """Tests for the chunking module."""
 
-from repo_intel.indexing.chunker import _detect_language, chunk_file
+from repo_intel.indexing.chunker import (
+    _detect_language,
+    _find_boundaries,
+    chunk_file,
+)
 
 # ------------------------------------------------------------------
 # Language detection
@@ -59,3 +63,63 @@ class TestChunking:
         assert len(chunks) >= 1
         for c in chunks:
             assert c.chunk_type == "doc"
+
+    # ------------------------------------------------------------------
+    # Small-file symbol extraction (regression for post-eval investigation)
+    # ------------------------------------------------------------------
+
+    def test_small_python_file_extracts_function_symbols(self):
+        """Small Python files with function definitions should produce
+        chunks with symbol_name set, even when the file is under the
+        MAX_CHUNK_LEN threshold."""
+        content = (
+            "def authenticate(username, password):\n"
+            "    return True\n"
+            "\n"
+            "def login_access_token(request):\n"
+            "    return {}\n"
+        )
+        chunks = chunk_file("auth.py", content)
+        symbol_chunks = [c for c in chunks if c.symbol_name is not None]
+        assert len(symbol_chunks) >= 2, "Expected both functions to be detected"
+        names = {c.symbol_name for c in symbol_chunks}
+        assert "authenticate" in names
+        assert "login_access_token" in names
+
+    def test_small_python_file_extracts_class_symbols(self):
+        """Small Python files with class definitions should produce
+        chunks with symbol_name set."""
+        content = (
+            "class UserRepository:\n"
+            "    def find_by_id(self, uid):\n"
+            "        pass\n"
+        )
+        chunks = chunk_file("repo.py", content)
+        symbol_chunks = [c for c in chunks if c.symbol_name is not None]
+        names = {c.symbol_name for c in symbol_chunks}
+        assert "UserRepository" in names
+
+    def test_small_file_without_functions_stays_single_chunk(self):
+        """A small file with no detectable boundaries should still
+        return a single 'file' chunk."""
+        content = "x = 1\ny = 2\nz = x + y\n"
+        chunks = chunk_file("math.py", content)
+        assert len(chunks) == 1
+        assert chunks[0].chunk_type == "file"
+        assert chunks[0].symbol_name is None
+
+    def test_boundary_detection_runs_on_small_files(self):
+        """_find_boundaries should detect functions regardless of
+        file size."""
+        lines = [
+            "def foo():",
+            "    pass",
+            "",
+            "def bar():",
+            "    return 1",
+        ]
+        boundaries = _find_boundaries(lines, "python")
+        assert len(boundaries) == 2
+        names = [b[3] for b in boundaries]
+        assert "foo" in names
+        assert "bar" in names

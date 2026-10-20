@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
+
 from repo_intel.retrieval.search import (
     _CHARS_PER_TOKEN,
     _apply_token_budget,
     _build_reason,
+    _dedup_overlapping_chunks,
     _rrf_fuse,
 )
 from repo_intel.retrieval.types import SearchResult
@@ -116,3 +119,107 @@ def test_apply_token_budget_empty():
 
 def test_build_reason_single():
     assert "exact" in _build_reason(["exact"])
+
+
+# ---------------------------------------------------------------------------
+# Overlap deduplication (regression for context-pack quality)
+# ---------------------------------------------------------------------------
+
+
+def _make_chunk(
+    path: str,
+    start: int,
+    end: int,
+    score: float,
+) -> SearchResult:
+    return SearchResult(
+        chunk_id=uuid.uuid4(),
+        path=path,
+        start_line=start,
+        end_line=end,
+        content_hash="hash",
+        text="content",
+        estimated_tokens=10,
+        score=score,
+    )
+
+
+def test_dedup_remooves_fully_subsumed_chunk():
+    """A chunk whose range is fully inside another from the same file is
+    dropped if the outer chunk has a higher score."""
+    results = [
+        _make_chunk("a.py", 1, 100, 0.9),  # covers everything
+        _make_chunk("a.py", 10, 20, 0.3),  # subsumed
+    ]
+    kept = _dedup_overlapping_chunks(results)
+    assert len(kept) == 1
+    assert kept[0].start_line == 1
+
+
+def test_dedup_keeps_higher_scored_overlapping_chunk():
+    """When two chunks overlap, the higher-scored one is kept."""
+    results = [
+        _make_chunk("b.py", 1, 50, 0.4),
+        _make_chunk("b.py", 1, 50, 0.8),
+    ]
+    kept = _dedup_overlapping_chunks(results)
+    assert len(kept) == 1
+    assert kept[0].score == 0.8
+
+
+def test_dedup_preserves_non_overlapping_chunks():
+    """Chunks from the same file with non-overlapping ranges are both kept."""
+    results = [
+        _make_chunk("c.py", 1, 10, 0.5),
+        _make_chunk("c.py", 20, 30, 0.5),
+    ]
+    kept = _dedup_overlapping_chunks(results)
+    assert len(kept) == 2
+
+
+def test_dedup_preserves_chunks_from_different_files():
+    """Chunks from different files are never deduped against each other."""
+    results = [
+        _make_chunk("a.py", 1, 10, 0.5),
+        _make_chunk("b.py", 1, 10, 0.5),
+    ]
+    kept = _dedup_overlapping_chunks(results)
+    assert len(kept) == 2
+
+
+def test_dedup_handles_adjacent_chunks():
+    """Adjacent chunks (end == next start - 1) are both preserved."""
+    results = [
+        _make_chunk("d.py", 1, 10, 0.5),
+        _make_chunk("d.py", 11, 20, 0.5),
+    ]
+    kept = _dedup_overlapping_chunks(results)
+    assert len(kept) == 2
+
+
+def test_dedup_empty_input():
+    assert _dedup_overlapping_chunks([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Token budget truncation flag
+# ---------------------------------------------------------------------------
+
+
+def test_apply_token_budget_sets_truncation_flag():
+    """A chunk that gets truncated should have is_truncated=True."""
+    results = [_make_result(400), _make_result(400), _make_result(400)]
+    budget = 90
+    trimmed = _apply_token_budget(results, budget)
+    for r in trimmed:
+        if "[truncated]" in r.text:
+            assert r.is_truncated is True
+
+
+def test_apply_token_budget_untruncated_chunks_have_flag_false():
+    """Chunks that fit entirely should have is_truncated=False."""
+    results = [_make_result(40), _make_result(40)]
+    budget = 200
+    trimmed = _apply_token_budget(results, budget)
+    for r in trimmed:
+        assert r.is_truncated is False

@@ -225,10 +225,11 @@ async def repo_symbol(
     """
     from sqlalchemy import select  # noqa: PLC0415
 
-    from repo_intel.db.models import FileRecord, Symbol
+    from repo_intel.db.models import Chunk, FileRecord, Symbol
 
     factory = get_session_factory()
     async with factory() as session:
+        # 1. Query the Symbol table (primary source)
         stmt = (
             select(Symbol, FileRecord.relative_path)
             .join(FileRecord, Symbol.file_id == FileRecord.id)
@@ -243,17 +244,49 @@ async def repo_symbol(
 
         rows = await session.execute(stmt)
 
-    results = []
-    for symbol, path in rows:
-        results.append({
-            "name": symbol.name,
-            "kind": symbol.kind,
-            "file": path,
-            "start_line": symbol.start_line,
-            "end_line": symbol.end_line,
-        })
+        symbol_results: list[dict[str, object]] = []
+        for symbol, path in rows:
+            symbol_results.append({
+                "name": symbol.name,
+                "kind": symbol.kind,
+                "file": path,
+                "start_line": symbol.start_line,
+                "end_line": symbol.end_line,
+                "source": "symbol",
+            })
 
-    return {"symbol": symbol_name, "definitions": results}
+        # 2. Fallback: if primary table returned nothing, also search
+        #    Chunk.symbol_name so that symbols from small files (where the
+        #    chunker emits boundary chunks with symbol_name set) are still
+        #    discoverable.
+        if not symbol_results:
+            chunk_stmt = (
+                select(Chunk.symbol_name, Chunk.start_line, Chunk.end_line,
+                       Chunk.chunk_type, FileRecord.relative_path)
+                .join(FileRecord, Chunk.file_id == FileRecord.id)
+                .where(
+                    Chunk.symbol_name.ilike(f"%{symbol_name}%"),
+                    Chunk.stale == False,  # noqa: E712
+                    FileRecord.deleted == False,  # noqa: E712
+                )
+                .limit(20)
+            )
+            if repository_id:
+                chunk_stmt = chunk_stmt.where(
+                    FileRecord.repository_id == repository_id,
+                )
+            chunk_rows = await session.execute(chunk_stmt)
+            for cname, cstart, cend, ckind, cpath in chunk_rows:
+                symbol_results.append({
+                    "name": cname,
+                    "kind": ckind or "unknown",
+                    "file": cpath,
+                    "start_line": cstart,
+                    "end_line": cend,
+                    "source": "chunk_fallback",
+                })
+
+    return {"symbol": symbol_name, "definitions": symbol_results}
 
 
 @mcp.tool
@@ -305,8 +338,10 @@ async def repo_context(
                 "content_hash": r.content_hash,
                 "text": r.text,
                 "retrieval_methods": r.retrieval_methods,
+                "relevance_reason": r.relevance_reason,
                 "generation_created_at": r.generation_created_at,
                 "is_stale": r.is_stale,
+                "is_truncated": r.is_truncated,
             }
             for r in results
         ],

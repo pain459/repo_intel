@@ -95,6 +95,10 @@ async def scan_repository(
     file_ids: dict[str, uuid.UUID] = {}  # relative_path -> existing file_id
     # Collect chunk objects for embedding after DB flush
     pending_chunks: list[tuple[Chunk, str]] = []  # (chunk_rec, content_text)
+    # Track content hashes across all files to prevent
+    # uq_gen_chunk_content violations when identical content
+    # appears in different files (e.g., generated boilerplate).
+    seen_hashes: set[str] = set()
 
     # Load existing files for this repo (for incremental diff).
     # Include soft-deleted rows so that files reappearing on disk are
@@ -187,6 +191,12 @@ async def scan_repository(
                 estimated_tokens=chunk.estimated_tokens,
                 embedding=None,  # filled in batch below
             )
+            if chunk.content_hash in seen_hashes:
+                # Duplicate content — skip to avoid UniqueViolation.
+                # The first chunk with this content already carries
+                # the symbol_name and file association.
+                continue
+            seen_hashes.add(chunk.content_hash)
             session.add(chunk_rec)
             pending_chunks.append((chunk_rec, final_content))
             total_chunks += 1

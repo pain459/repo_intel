@@ -338,6 +338,79 @@ async def _fetch_chunk_details(
 
 
 # ---------------------------------------------------------------------------
+# Overlap deduplication
+# ---------------------------------------------------------------------------
+
+
+def _dedup_overlapping_chunks(
+    results: list[SearchResult],
+) -> list[SearchResult]:
+    """Remove chunks whose line range is fully subsumed by a higher-scored
+    chunk from the same file.
+
+    This prevents context packs from containing redundant overlapping excerpts
+    when boundary-chunking small files produces multiple adjacent regions.
+    """
+    # Group by file path
+    by_path: dict[str, list[SearchResult]] = {}
+    for r in results:
+        by_path.setdefault(r.path, []).append(r)
+
+    kept: list[SearchResult] = []
+    for path, chunks in by_path.items():
+        # Sort by descending score so higher-scored chunks win
+        chunks.sort(key=lambda c: c.score, reverse=True)
+        # Track the union of line ranges already covered
+        covered_intervals: list[tuple[int, int]] = []
+        for c in chunks:
+            if _range_covered(c.start_line, c.end_line, covered_intervals):
+                continue
+            kept.append(c)
+            _merge_interval(covered_intervals, c.start_line, c.end_line)
+
+    # Preserve the original fusion order (by score descending)
+    kept.sort(key=lambda c: c.score, reverse=True)
+    return kept
+
+
+def _range_covered(
+    start: int,
+    end: int,
+    intervals: list[tuple[int, int]],
+) -> bool:
+    """Return True if [start, end] is fully covered by the union of intervals."""
+    for is_, ie_ in intervals:
+        if start >= is_ and end <= ie_:
+            return True
+    return False
+
+
+def _merge_interval(
+    intervals: list[tuple[int, int]],
+    start: int,
+    end: int,
+) -> None:
+    """Add [start, end] to the interval list, merging overlaps in-place."""
+    new_intervals: list[tuple[int, int]] = []
+    s, e = start, end
+    for is_, ie_ in intervals:
+        if e + 1 < is_:
+            # New interval ends before this one starts
+            new_intervals.append((s, e))
+            s, e = is_, ie_
+        elif s - 1 > ie_:
+            # This interval ends before the new one starts
+            new_intervals.append((is_, ie_))
+        else:
+            # Overlap — merge
+            s = min(s, is_)
+            e = max(e, ie_)
+    new_intervals.append((s, e))
+    intervals.clear()
+    intervals.extend(new_intervals)
+
+
+# ---------------------------------------------------------------------------
 # Token budget filtering
 # ---------------------------------------------------------------------------
 
@@ -355,6 +428,7 @@ def _apply_token_budget(
             remaining = budget - total_tokens
             max_chars = remaining * _CHARS_PER_TOKEN
             if max_chars > 50:
+                r.is_truncated = True
                 r.text = r.text[:max_chars] + "\n\n... [truncated]"
                 trimmed.append(r)
             break
@@ -470,6 +544,11 @@ async def hybrid_search(
                     r.is_stale = False
         else:
             r.is_stale = False
+
+    # 6a. Deduplicate overlapping chunks from the same file.
+    #     When boundary-chunking small files produces multiple chunks that
+    #     overlap in line range, keep only the one with the highest score.
+    results = _dedup_overlapping_chunks(results)
 
     # 7. Apply token budget
     results = _apply_token_budget(results, request.token_budget)

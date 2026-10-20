@@ -240,6 +240,10 @@ async def tool_repo_context(
                 "content_hash": r.content_hash,
                 "text": r.text,
                 "retrieval_methods": r.retrieval_methods,
+                "relevance_reason": r.relevance_reason,
+                "generation_created_at": r.generation_created_at,
+                "is_stale": r.is_stale,
+                "is_truncated": r.is_truncated,
             }
             for r in results
         ],

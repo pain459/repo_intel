@@ -26,6 +26,8 @@ class SearchResult:
     # Index freshness metadata
     generation_created_at: str = ""
     is_stale: bool = False
+    # Whether the chunk content was truncated to fit the token budget
+    is_truncated: bool = False
     # Internal: generation ID for freshness lookup (not serialized to API)
     generation_id: str = ""
 

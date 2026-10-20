@@ -237,8 +237,16 @@ def chunk_file(file_path: str, content: str) -> list[Chunk]:
 
     lines = content.split("\n")
 
-    # Small files: return as a single chunk
+    # Always try boundary detection so that symbols are extractable
+    # even from small files (≤ MAX_CHUNK_LEN chars).
+    boundaries = _find_boundaries(lines, language)
+
+    # Small files: return as a single chunk.
+    # If boundaries were found, emit them as separate symbol chunks
+    # so that Symbol records can be created during indexing.
     if len(content) <= MAX_CHUNK_LEN:
+        if boundaries:
+            return _chunk_by_boundaries(lines, boundaries, language)
         return [
             Chunk(
                 start_line=1,
@@ -250,9 +258,7 @@ def chunk_file(file_path: str, content: str) -> list[Chunk]:
             )
         ]
 
-    # Try boundary-aware chunking
-    boundaries = _find_boundaries(lines, language)
-
+    # Large files: use the boundaries already detected above.
     if boundaries:
         return _chunk_by_boundaries(lines, boundaries, language)
 
