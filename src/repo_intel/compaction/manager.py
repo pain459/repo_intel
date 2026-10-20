@@ -145,7 +145,19 @@ async def session_bootstrap(
             )
         cp = (await session.scalars(cp_stmt)).first()
 
-        checkpoint_data = _checkpoint_to_dict(cp) if cp else None
+        # Check if the checkpoint has been marked stale
+        checkpoint_data = None
+        is_stale = False
+        if cp:
+            evidence = cp.evidence or {}
+            compaction_info = evidence.get("compaction", {})
+            is_stale = "marked_stale_at" in compaction_info
+            checkpoint_data = _checkpoint_to_dict(cp)
+            if is_stale:
+                checkpoint_data["stale"] = True
+                checkpoint_data["marked_stale_at"] = compaction_info[
+                    "marked_stale_at"
+                ]
 
         # Recent verified memories
         mem_stmt = (

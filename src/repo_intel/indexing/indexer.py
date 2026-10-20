@@ -16,8 +16,10 @@ from repo_intel.db.models import (
     IndexJob,
     Repository,
     Symbol,
+    SymbolEdge,
 )
 from repo_intel.indexing.chunker import chunk_file
+from repo_intel.indexing.edge_detector import detect_edges
 from repo_intel.indexing.discovery import discover_files
 from repo_intel.indexing.embeddings.adapter import get_embeddings_batch
 from repo_intel.security.redaction import redact_content
@@ -100,6 +102,9 @@ async def scan_repository(
     # appears in different files (e.g., generated boilerplate).
     seen_hashes: set[str] = set()
 
+    # Collect per-file data for edge detection (run after symbols flushed)
+    file_edge_data: dict[str, tuple[str, set[str]]] = {}  # path -> (content, defined_symbols)
+
     # Load existing files for this repo (for incremental diff).
     # Include soft-deleted rows so that files reappearing on disk are
     # reused rather than re-inserted (which would hit uq_repo_files_path).
@@ -110,6 +115,9 @@ async def scan_repository(
 
     # Track which files we see this scan
     seen_paths: set[str] = set()
+    # Track file_ids that were unchanged and reused from a prior generation.
+    # Their chunks should NOT be marked stale during the old-gen cleanup.
+    unchanged_file_ids: set[uuid.UUID] = set()
 
     for df in discovered:
         seen_paths.add(df.relative_path)
@@ -117,10 +125,11 @@ async def scan_repository(
         # Check if file content changed
         existing = existing_files.get(df.relative_path)
         if existing and existing.content_hash == df.content_hash and not existing.worktree_dirty:
-            # No change, keep existing chunks
+            # No change, keep existing chunks from prior generation.
             # Reinstate if it was soft-deleted by a previous generation
             existing.deleted = False
             file_ids[df.relative_path] = existing.id
+            unchanged_file_ids.add(existing.id)
             continue
 
         # Read file content
@@ -202,6 +211,7 @@ async def scan_repository(
             total_chunks += 1
 
         # Detect symbols (functions, classes) from chunks
+        file_symbols: set[str] = set()
         for chunk in chunks:
             if chunk.chunk_type in ("function", "class", "method") and chunk.symbol_name:
                 symbol = Symbol(
@@ -214,8 +224,12 @@ async def scan_repository(
                     generation_id=generation_id,
                 )
                 session.add(symbol)
+                file_symbols.add(chunk.symbol_name)
 
-    # 4b. Flush chunk records, then generate embeddings in batch
+        # Store content + defined symbols for edge detection (batched later)
+        file_edge_data[df.relative_path] = (content, file_symbols)
+
+    # 4b. Flush so that Symbol rows acquire IDs for edge resolution
     if pending_chunks:
         await session.flush()
         logger.info(
@@ -231,20 +245,101 @@ async def scan_repository(
             else:
                 logger.debug("Embedding unavailable for chunk %s", chunk_rec.id)
 
+    # 4c. Detect and persist symbol dependency edges
+    # Build a global set of defined symbol names for cross-file resolution
+    all_defined_symbols: set[str] = set()
+    for (_, file_syms) in file_edge_data.values():
+        all_defined_symbols.update(file_syms)
+
+    # Flush symbols so they have IDs
+    await session.flush()
+
+    # Build symbol name -> list of (file_id, symbol_id) mappings
+    symbol_rows = await session.execute(
+        select(Symbol).where(
+            Symbol.generation_id == generation_id,
+        )
+    )
+    symbol_map: dict[str, list[uuid.UUID]] = {}
+    for sym in symbol_rows.scalars():
+        symbol_map.setdefault(sym.name, []).append(sym.id)
+
+    for rel_path, (file_content, file_syms) in file_edge_data.items():
+        raw_edges = detect_edges(file_content, all_defined_symbols)
+        if not raw_edges:
+            continue
+        for edge in raw_edges:
+            # Resolve from/to symbol names to IDs
+            from_ids = symbol_map.get(edge.from_name, [])
+            to_ids = symbol_map.get(edge.to_name, [])
+            if not from_ids or not to_ids:
+                continue
+            # Use the first matching symbol ID;
+            # for same-name symbols in different files this is an approximation
+            session.add(
+                SymbolEdge(
+                    repository_id=repo_id,
+                    from_symbol_id=from_ids[0],
+                    to_symbol_id=to_ids[0],
+                    relation_type=edge.relation_type,
+                    evidence_location=f"{rel_path}:{edge.line}",
+                    confidence=0.7,
+                    generation_id=generation_id,
+                )
+            )
+
     # 5. Mark deleted files
     for rel_path, existing in existing_files.items():
         if rel_path not in seen_paths:
             existing.deleted = True
 
-    # 5b. Mark chunks belonging to older generations as stale
+    # 5a. Deactivate older generations so that only one generation
+    #     is active per repository at any time.
     await session.execute(
-        update(Chunk)
+        update(IndexGeneration)
         .where(
-            Chunk.generation_id != generation_id,
-            Chunk.stale == False,  # noqa: E712
+            IndexGeneration.repository_id == repo_id,
+            IndexGeneration.state == "active",
+            IndexGeneration.id != generation_id,
         )
-        .values(stale=True)
+        .values(state="retired")
     )
+
+    # 5b. Mark chunks belonging to older generations as stale,
+    #     EXCEPT for unchanged files whose chunks are reused.
+    #     Unchanged file chunks stay non-stale so their content
+    #     remains searchable without re-embedding.
+    stale_exclude: list[uuid.UUID] = list(unchanged_file_ids)
+    if stale_exclude:
+        await session.execute(
+            update(Chunk)
+            .where(
+                Chunk.file_id.in_(
+                    select(FileRecord.id).where(
+                        FileRecord.repository_id == repo_id,
+                    ),
+                ),
+                Chunk.generation_id != generation_id,
+                Chunk.stale == False,  # noqa: E712
+                Chunk.file_id.not_in(stale_exclude),
+            )
+            .values(stale=True)
+        )
+    else:
+        # No unchanged files — mark all old-gen chunks stale
+        await session.execute(
+            update(Chunk)
+            .where(
+                Chunk.file_id.in_(
+                    select(FileRecord.id).where(
+                        FileRecord.repository_id == repo_id,
+                    ),
+                ),
+                Chunk.generation_id != generation_id,
+                Chunk.stale == False,  # noqa: E712
+            )
+            .values(stale=True)
+        )
 
     # 6. Update generation state
     generation.chunk_count = total_chunks

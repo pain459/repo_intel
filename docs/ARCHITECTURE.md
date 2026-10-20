@@ -558,7 +558,7 @@ Agent calls checkpoint_get(session_id)  (or task_resume alias)
 ### 5.1 Entity-Relationship Overview
 
 ```
-repositories (1) ──── (N) file_records (1) ──── (N) chunks
+repositories (1) ──── (N) files (1) ──── (N) chunks
       │                     │                          │
       │                     │                          │
       ├─── (1) ──── (N) symbols (N) ──── (1) symbol_edges

@@ -33,6 +33,8 @@ class BenchmarkResult:
     latency_ms: float
     num_results: int
     recall_at_10: float = 0.0
+    mrr: float = 0.0
+    first_relevant_rank: int | None = None
     categories_matched: list[str] = field(default_factory=list)
 
 
@@ -75,10 +77,18 @@ async def run_benchmark(
             total_latency += elapsed_ms
 
             recall = 0.0
+            mrr = 0.0
+            first_rank: int | None = None
             if bq.expected_chunks:
-                hit_ids = {str(h.chunk_id) for h in hits}
+                hit_ids = [str(h.chunk_id) for h in hits]
                 found = sum(1 for cid in bq.expected_chunks if cid in hit_ids)
                 recall = found / len(bq.expected_chunks)
+                # MRR: reciprocal rank of first relevant hit
+                for rank_idx, hid in enumerate(hit_ids, 1):
+                    if hid in bq.expected_chunks:
+                        first_rank = rank_idx
+                        mrr = 1.0 / rank_idx
+                        break
 
             methods: set[str] = set()
             for h in hits:
@@ -89,6 +99,8 @@ async def run_benchmark(
                 latency_ms=round(elapsed_ms, 2),
                 num_results=len(hits),
                 recall_at_10=recall,
+                mrr=mrr,
+                first_relevant_rank=first_rank,
                 categories_matched=list(methods),
             ))
 
@@ -96,16 +108,23 @@ async def run_benchmark(
         total_latency / len(results) if results else 0.0
     )
 
+    average_mrr = (
+        sum(r.mrr for r in results) / len(results) if results else 0.0
+    )
+
     return {
         "num_queries": len(query_set),
         "avg_latency_ms": round(avg_latency, 2),
         "total_latency_ms": round(total_latency, 2),
+        "average_mrr": round(average_mrr, 4),
         "results": [
             {
                 "query": r.query_name,
                 "latency_ms": r.latency_ms,
                 "num_results": r.num_results,
                 "recall_at_10": r.recall_at_10,
+                "mrr": r.mrr,
+                "first_relevant_rank": r.first_relevant_rank,
                 "methods": r.categories_matched,
             }
             for r in results

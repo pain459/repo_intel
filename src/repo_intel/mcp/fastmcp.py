@@ -558,11 +558,34 @@ async def memory_search(
                 "repository_id": str(m.repository_id)
                 if m.repository_id
                 else None,
+                "evidence": m.evidence,
+                "source_commit": m.source_commit,
+                "author": m.author,
                 "created_at": str(m.created_at),
             }
             for m in memories
         ],
     }
+
+
+# Alias — plan name memory_read delegates to memory_search
+
+
+@mcp.tool(name="memory_read")
+@_instrument_tool("memory_read")
+async def memory_read_alias(
+    query: str | None = None,
+    repository_id: str | None = None,
+    kind: str | None = None,
+    limit: int = 20,
+) -> dict:
+    """Alias for memory_search. See memory_search for full documentation."""
+    return await memory_search(
+        query=query,
+        repository_id=repository_id,
+        kind=kind,
+        limit=limit,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -832,16 +855,34 @@ async def repo_dependencies(
     """
     from sqlalchemy import select  # noqa: PLC0415
 
-    from repo_intel.db.models import Symbol, SymbolEdge
+    from repo_intel.db.models import (
+        FileRecord,
+        IndexGeneration,
+        Symbol,
+        SymbolEdge,
+    )
 
     factory = get_session_factory()
     async with factory() as session:
-        # Find the starting symbol
+        # Determine active generation IDs (scoped to repo if provided)
+        gen_stmt = (
+            select(IndexGeneration.id)
+            .where(IndexGeneration.state == "active")
+        )
+        if repository_id:
+            gen_stmt = gen_stmt.where(
+                IndexGeneration.repository_id == repository_id
+            )
+        active_gen_ids = [
+            str(gid) for gid in (await session.scalars(gen_stmt))
+        ]
+
+        # Find the starting symbol (only from active generations)
         stmt = select(Symbol).where(
-            Symbol.name.ilike(f"%{symbol_name}%")
+            Symbol.name.ilike(f"%{symbol_name}%"),
+            Symbol.generation_id.in_(active_gen_ids),
         ).limit(5)
         if repository_id:
-            from repo_intel.db.models import FileRecord  # noqa: PLC0415
             stmt = stmt.join(FileRecord).where(
                 FileRecord.repository_id == repository_id
             )
@@ -862,7 +903,9 @@ async def repo_dependencies(
             edge_stmt = select(SymbolEdge).where(
                 SymbolEdge.from_symbol_id.in_(current_ids)
                 if direction == "outgoing"
-                else SymbolEdge.to_symbol_id.in_(current_ids)
+                else SymbolEdge.to_symbol_id.in_(current_ids),
+            ).where(
+                SymbolEdge.generation_id.in_(active_gen_ids),
             )
             rows = await session.scalars(edge_stmt)
             next_ids: set[str] = set()

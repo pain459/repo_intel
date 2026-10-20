@@ -126,7 +126,7 @@ find /path/to/repo -size +1M -type f
 docker compose exec api repo-intel status
 
 # 2. Check chunk count in DB
-docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*) FROM index_chunks;"
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT count(*) FROM chunks;"
 
 # 3. Try a simpler query
 docker compose exec api repo-intel search "import"
@@ -141,10 +141,10 @@ Check Grafana dashboard at `http://localhost:3000` → Search Performance sectio
 
 ```bash
 # Check embedding dimension (should be 768 for nomic-embed-text)
-docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT vector_dims FROM index_chunks LIMIT 1;"
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT repository_id, count(*) FROM chunks LIMIT 1;"
 
 # Check index counts
-docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT repository_id, count(*) FROM index_chunks GROUP BY repository_id;"
+docker compose exec api psql -U repo_intel -d repo_intel -c "SELECT repository_id, count(*) FROM chunks GROUP BY repository_id;"
 ```
 
 ---

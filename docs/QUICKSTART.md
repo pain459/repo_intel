@@ -180,7 +180,7 @@ docker compose exec api psql -U repo_intel -d repo_intel -c \
 
 # List symbols for a specific repo
 docker compose exec api psql -U repo_intel -d repo_intel -c \
-  "SELECT s.name, s.kind, f.relative_path FROM symbols s JOIN file_records f ON s.file_id = f.id WHERE f.repository_id = '<uuid>' LIMIT 20;"
+  "SELECT s.name, s.kind, f.relative_path FROM symbols s JOIN files f ON s.file_id = f.id WHERE f.repository_id = '<uuid>' LIMIT 20;"
 ```
 
 ---
@@ -203,7 +203,7 @@ docker compose exec api repo-intel search "error handling" --limit 5
 ### Via the API
 
 ```bash
-curl -X POST http://localhost:8765/search \
+curl -X POST http://localhost:8765/api/search/ \
   -H "Content-Type: application/json" \
   -d '{"query": "how does authentication work", "limit": 10}'
 ```

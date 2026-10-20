@@ -59,6 +59,7 @@ class MemoryOut(BaseModel):
     status: str
     evidence: dict[str, Any] | None
     source_commit: str | None
+    author: str | None
     created_at: str
     relevance_score: float = 0.0
 
@@ -214,7 +215,10 @@ def _to_out(m: Memory) -> MemoryOut:
         status=m.status,
         evidence=m.evidence,
         source_commit=m.source_commit,
-        created_at=str(m.created_at) if hasattr(m, "created_at") and m.created_at else "",
+        author=m.author,
+        created_at=str(m.created_at)
+        if hasattr(m, "created_at") and m.created_at
+        else "",
     )
 
 
