@@ -57,3 +57,5 @@ class SearchRequest:
     min_score: float = 0.0
     # Whether to include full chunk content
     include_content: bool = True
+    # When True, skip chunks whose chunk_type is "doc" (markdown, README, etc.)
+    exclude_doc_chunks: bool = False

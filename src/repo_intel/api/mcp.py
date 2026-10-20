@@ -30,8 +30,13 @@ async def call_tool(body: ToolCall) -> dict:
             raise HTTPException(400, "repo_search requires 'query' parameter")
         repo_id = body.parameters.get("repository_id")
         limit = body.parameters.get("limit", 10)
+        exclude_doc = body.parameters.get("exclude_doc_chunks", False)
         return await mcp_server.tool_repo_search(
-            factory, query=query, repository_id=repo_id, limit=int(limit)
+            factory,
+            query=query,
+            repository_id=repo_id,
+            limit=int(limit),
+            exclude_doc_chunks=bool(exclude_doc),
         )
 
     if body.tool == "repo_symbol":
@@ -156,6 +161,13 @@ async def call_tool(body: ToolCall) -> dict:
             repository_id=body.parameters.get("repository_id"),
         )
 
+    if body.tool == "repo_list_files":
+        return await mcp_server.tool_repo_list_files(
+            factory,
+            repository_id=body.parameters.get("repository_id"),
+            glob_pattern=body.parameters.get("glob_pattern"),
+        )
+
     if body.tool == "repo_read_file":
         return await mcp_server.tool_repo_read_file(
             factory,
@@ -199,6 +211,18 @@ async def list_tools() -> dict:
                     "query": {"type": "string", "required": True},
                     "repository_id": {"type": "string", "required": False},
                     "limit": {"type": "integer", "required": False, "default": 10},
+                    "exclude_doc_chunks": {
+                        "type": "boolean", "required": False,
+                        "default": False,
+                    },
+                },
+            },
+            {
+                "name": "repo_list_files",
+                "description": "List indexed files in a repository",
+                "parameters": {
+                    "repository_id": {"type": "string", "required": True},
+                    "glob_pattern": {"type": "string", "required": False},
                 },
             },
             {

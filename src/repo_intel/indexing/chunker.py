@@ -32,6 +32,11 @@ MAX_CHUNK_LEN = 8_000
 _PYTHON_FUNC = re.compile(r"^(\s*)(?:async\s+)?def\s+(\w+)\s*\(")
 _PYTHON_CLASS = re.compile(r"^(\s*)class\s+(\w+)")
 _PYTHON_DECORATOR = re.compile(r"^@")
+# Module-level variable / type-alias assignments (NAME = ... at indent 0)
+# Only matches names starting with an uppercase letter (type aliases,
+# FastAPI dependency aliases like SessionDep, etc.).
+# Avoids capturing simple local-style assignments like x = 1.
+_PYTHON_VAR = re.compile(r"^([A-Z]\w*)\s*=[^=]")
 
 # JavaScript / TypeScript: function / const fn = / class / method
 _JS_FUNC = re.compile(
@@ -91,7 +96,7 @@ class Chunk:
 # ---------------------------------------------------------------------------
 
 _LANG_PATTERNS: dict[str, tuple] = {
-    "python": (_PYTHON_FUNC, _PYTHON_CLASS),
+    "python": (_PYTHON_FUNC, _PYTHON_CLASS, _PYTHON_VAR),
     "javascript": (_JS_FUNC, _JS_ARROW, _JS_CLASS, _JS_METHOD),
     "typescript": (_JS_FUNC, _JS_ARROW, _JS_CLASS, _JS_METHOD),
     "rust": (_RUST_FN, _RUST_STRUCT, _RUST_IMPL),
@@ -186,13 +191,17 @@ def _find_boundaries(lines: list[str], language: str) -> list[tuple[int, int, st
             if name in _CONTROL_FLOW:
                 break
             pat_lower = pattern.pattern.lower()
-            kind = (
-                "function"
-                if "func" in pat_lower or "fn" in pat_lower
+            if (
+                "func" in pat_lower or "fn" in pat_lower
                 or "arrow" in pat_lower or "method" in pat_lower
                 or "def\\s" in pat_lower
-                else "class"
-            )
+            ):
+                kind = "function"
+            elif pat_lower == _PYTHON_VAR.pattern.lower():
+                # Module-level assignment (type aliases, engine, config, etc.)
+                kind = "variable"
+            else:
+                kind = "class"
             # Find the end of the region by looking for the next boundary at same/lower indent
             end = i
             if language == "python":

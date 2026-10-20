@@ -152,7 +152,9 @@ async def scan_repository(
         # Extract symbol names from chunks for edge detection
         file_symbols: set[str] = set()
         for chunk in chunks:
-            if chunk.chunk_type in ("function", "class", "method") and chunk.symbol_name:
+            if chunk.chunk_type in (
+                "function", "class", "method", "variable"
+            ) and chunk.symbol_name:
                 file_symbols.add(chunk.symbol_name)
 
         # Upsert DB records only when file actually changed
@@ -232,7 +234,9 @@ async def scan_repository(
             file_id = file_ids.get(df.relative_path)
 
         for chunk in chunks:
-            if chunk.chunk_type in ("function", "class", "method") and chunk.symbol_name:
+            if chunk.chunk_type in (
+                "function", "class", "method", "variable"
+            ) and chunk.symbol_name:
                 if file_id is None:
                     continue
                 symbol = Symbol(

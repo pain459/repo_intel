@@ -133,6 +133,7 @@ async def tool_repo_search(
     query: str,
     repository_id: str | None = None,
     limit: int = 10,
+    exclude_doc_chunks: bool = False,
 ) -> dict:
     """Hybrid search across indexed repositories."""
     from repo_intel.retrieval.search import hybrid_search
@@ -143,6 +144,7 @@ async def tool_repo_search(
             query=query,
             repository_id=repository_id,
             limit=limit,
+            exclude_doc_chunks=exclude_doc_chunks,
         )
         results = await hybrid_search(session, request)
 
@@ -318,6 +320,58 @@ async def tool_repo_context(
             }
             for r in results
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# File listing tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_repo_list_files(
+    session_factory,
+    repository_id: str,
+    glob_pattern: str | None = None,
+) -> dict:
+    """List indexed files in a repository.
+
+    *glob_pattern* can be e.g. ``*.py`` to narrow results.
+    """
+    import fnmatch  # noqa: PLC0415
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import FileRecord, Repository  # noqa: PLC0415
+
+    async with session_factory() as session:
+        repo = await session.get(Repository, repository_id)
+        if not repo:
+            return {"error": f"Repository {repository_id} not found"}
+
+        q = select(FileRecord).where(
+            FileRecord.repository_id == repo.id,
+            FileRecord.deleted == False,  # noqa: E712
+        ).order_by(FileRecord.relative_path)
+        rows = list(await session.scalars(q))
+
+    files = [
+        {
+            "relative_path": f.relative_path,
+            "language": f.language,
+            "size_bytes": f.size_bytes,
+        }
+        for f in rows
+    ]
+    # Apply glob filter after fetching (fnmatch supports simple wildcards)
+    if glob_pattern:
+        files = [
+            f for f in files
+            if fnmatch.fnmatch(f["relative_path"], glob_pattern)
+        ]
+
+    return {
+        "repository_id": repository_id,
+        "file_count": len(files),
+        "files": files,
     }
 
 

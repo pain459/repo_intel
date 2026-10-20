@@ -73,6 +73,7 @@ async def _exact_candidates(
     query: str,
     repository_id: str | None,
     generation_ids: list[str],
+    exclude_doc_chunks: bool = False,
 ) -> dict[str, int]:
     """Return {chunk_id: rank} for chunks whose path or symbol matches *query*."""
     if not generation_ids:
@@ -92,6 +93,8 @@ async def _exact_candidates(
     )
     if repository_id:
         subquery = subquery.where(FileRecord.repository_id == repository_id)
+    if exclude_doc_chunks:
+        subquery = subquery.where(Chunk.chunk_type != "doc")
 
     rows = await session.execute(subquery)
     for chunk_id, symbol_name, rel_path in rows:
@@ -114,6 +117,7 @@ async def _lexical_candidates(
     query: str,
     repository_id: str | None,
     generation_ids: list[str],
+    exclude_doc_chunks: bool = False,
 ) -> dict[str, int]:
     """Return {chunk_id: rank} for PostgreSQL FTS matches on chunk content."""
     if not generation_ids:
@@ -123,6 +127,8 @@ async def _lexical_candidates(
     placeholders = ",".join(
         f"CAST(:gen_{i} AS uuid)" for i in range(len(generation_ids))
     )
+
+    doc_filter = "AND c.chunk_type != 'doc'" if exclude_doc_chunks else ""
     sql = text(
         f"""
         SELECT c.id, ts_rank_cd(to_tsvector('english', c.content),
@@ -132,6 +138,7 @@ async def _lexical_candidates(
         WHERE c.generation_id IN ({placeholders})
           AND f.deleted = false
           AND c.stale = false
+          {doc_filter}
           AND to_tsvector('english', c.content) @@ plainto_tsquery('english', :query)
         ORDER BY rank_val DESC
         LIMIT :limit
@@ -163,6 +170,7 @@ async def _semantic_candidates(
     query: str,
     repository_id: str | None,
     generation_ids: list[str],
+    exclude_doc_chunks: bool = False,
 ) -> dict[str, int]:
     """Return {chunk_id: rank} for pgvector cosine distance matches."""
     if not generation_ids:
@@ -181,6 +189,8 @@ async def _semantic_candidates(
         f"CAST(:gen_{i} AS uuid)" for i in range(len(generation_ids))
     )
 
+    doc_filter = "AND c.chunk_type != 'doc'" if exclude_doc_chunks else ""
+
     bind_params = {f"gen_{i}": gid for i, gid in enumerate(generation_ids)}
     bind_params["query_vec"] = query_vec_text
     bind_params["limit"] = _CANDIDATE_LIMIT
@@ -194,6 +204,7 @@ async def _semantic_candidates(
             WHERE c.generation_id IN ({placeholders})
               AND f.deleted = false
               AND c.stale = false
+              {doc_filter}
               AND c.embedding IS NOT NULL
             ORDER BY c.embedding <=> CAST(:query_vec AS vector)
             LIMIT :limit
@@ -218,6 +229,7 @@ async def _symbol_candidates(
     query: str,
     repository_id: str | None,
     generation_ids: list[str],
+    exclude_doc_chunks: bool = False,
 ) -> dict[str, int]:
     """Return {chunk_id: rank} for chunks whose symbol_name matches *query*.
 
@@ -242,6 +254,8 @@ async def _symbol_candidates(
             Chunk.symbol_name.isnot(None),
         )
     )
+    if exclude_doc_chunks:
+        subquery = subquery.where(Chunk.chunk_type != "doc")
     rows = await session.execute(subquery)
 
     results: dict[str, int] = {}
@@ -487,16 +501,20 @@ async def hybrid_search(
 
     # 2. Run all four candidate retrieval modes (exact, FTS, vector, symbol)
     exact = await _exact_candidates(
-        session, effective_query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids,
+        exclude_doc_chunks=request.exclude_doc_chunks,
     )
     lexical = await _lexical_candidates(
-        session, effective_query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids,
+        exclude_doc_chunks=request.exclude_doc_chunks,
     )
     semantic = await _semantic_candidates(
-        session, effective_query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids,
+        exclude_doc_chunks=request.exclude_doc_chunks,
     )
     symbol = await _symbol_candidates(
-        session, effective_query, request.repository_id, generation_ids
+        session, effective_query, request.repository_id, generation_ids,
+        exclude_doc_chunks=request.exclude_doc_chunks,
     )
 
     # 3. Fuse
