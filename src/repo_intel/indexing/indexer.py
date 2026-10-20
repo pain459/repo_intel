@@ -6,6 +6,7 @@ import hashlib
 import logging
 import uuid
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,15 +125,16 @@ async def scan_repository(
 
         # Check if file content changed
         existing = existing_files.get(df.relative_path)
+        file_changed = True
         if existing and existing.content_hash == df.content_hash and not existing.worktree_dirty:
             # No change, keep existing chunks from prior generation.
             # Reinstate if it was soft-deleted by a previous generation
             existing.deleted = False
             file_ids[df.relative_path] = existing.id
             unchanged_file_ids.add(existing.id)
-            continue
+            file_changed = False
 
-        # Read file content
+        # Read file content (needed for edge detection even when unchanged)
         import os
         file_path = os.path.join(repo.git_path, df.relative_path)
         try:
@@ -142,78 +144,97 @@ async def scan_repository(
             logger.warning("Cannot read %s: %s", df.relative_path, exc)
             continue
 
-        # Chunk the content
+        # Chunk the content to derive symbols (always needed for edge
+        # detection, even when file unchanged).  For unchanged files we
+        # skip DB writes but still need symbol names.
         chunks = chunk_file(df.relative_path, content)
-        if not chunks:
-            continue
 
-        # Upsert file record
-        if existing and existing.content_hash != df.content_hash:
-            existing.content_hash = df.content_hash
-            existing.size_bytes = df.size_bytes
-            existing.language = df.language
-            # Reinstate if it was soft-deleted by a previous generation
-            existing.deleted = False
-        elif existing:
-            # Reinstate soft-deleted rows that still exist on disk
-            existing.deleted = False
-            file_ids[df.relative_path] = existing.id
-            continue
-
-        if existing:
-            file_id = existing.id
-        else:
-            file_rec = FileRecord(
-                repository_id=repo_id,
-                relative_path=df.relative_path,
-                language=df.language,
-                size_bytes=df.size_bytes,
-                content_hash=df.content_hash,
-            )
-            session.add(file_rec)
-            await session.flush()
-            file_id = file_rec.id
-
-        # Upsert chunks (embedding set later in batch)
-        for chunk in chunks:
-            # Redact secrets from chunk content before storage
-            redacted = redact_content(chunk.content)
-            final_content = redacted.cleaned_text
-            if redacted.patterns_matched > 0:
-                logger.warning(
-                    "Redacted %d secret pattern(s) in %s:%d-%d: %s",
-                    redacted.patterns_matched,
-                    df.relative_path,
-                    chunk.start_line,
-                    chunk.end_line,
-                    ", ".join(set(redacted.pattern_labels)),
-                )
-            chunk_rec = Chunk(
-                file_id=file_id,
-                generation_id=generation_id,
-                start_line=chunk.start_line,
-                end_line=chunk.end_line,
-                chunk_type=chunk.chunk_type,
-                symbol_name=chunk.symbol_name,
-                content_hash=chunk.content_hash,
-                content=final_content,
-                estimated_tokens=chunk.estimated_tokens,
-                embedding=None,  # filled in batch below
-            )
-            if chunk.content_hash in seen_hashes:
-                # Duplicate content — skip to avoid UniqueViolation.
-                # The first chunk with this content already carries
-                # the symbol_name and file association.
-                continue
-            seen_hashes.add(chunk.content_hash)
-            session.add(chunk_rec)
-            pending_chunks.append((chunk_rec, final_content))
-            total_chunks += 1
-
-        # Detect symbols (functions, classes) from chunks
+        # Extract symbol names from chunks for edge detection
         file_symbols: set[str] = set()
         for chunk in chunks:
             if chunk.chunk_type in ("function", "class", "method") and chunk.symbol_name:
+                file_symbols.add(chunk.symbol_name)
+
+        # Upsert DB records only when file actually changed
+        if file_changed:
+            if not chunks:
+                file_edge_data[df.relative_path] = (content, file_symbols)
+                continue
+
+            # Upsert file record
+            if existing and existing.content_hash != df.content_hash:
+                existing.content_hash = df.content_hash
+                existing.size_bytes = df.size_bytes
+                existing.language = df.language
+                # Reinstate if it was soft-deleted by a previous generation
+                existing.deleted = False
+            elif existing:
+                # Reinstate soft-deleted rows that still exist on disk
+                existing.deleted = False
+                file_edge_data[df.relative_path] = (content, file_symbols)
+                continue
+
+            if existing:
+                file_id = existing.id
+            else:
+                file_rec = FileRecord(
+                    repository_id=repo_id,
+                    relative_path=df.relative_path,
+                    language=df.language,
+                    size_bytes=df.size_bytes,
+                    content_hash=df.content_hash,
+                )
+                session.add(file_rec)
+                await session.flush()
+                file_id = file_rec.id
+
+            # Upsert chunks (embedding set later in batch)
+            for chunk in chunks:
+                # Redact secrets from chunk content before storage
+                redacted = redact_content(chunk.content)
+                final_content = redacted.cleaned_text
+                if redacted.patterns_matched > 0:
+                    logger.warning(
+                        "Redacted %d secret pattern(s) in %s:%d-%d: %s",
+                        redacted.patterns_matched,
+                        df.relative_path,
+                        chunk.start_line,
+                        chunk.end_line,
+                        ", ".join(set(redacted.pattern_labels)),
+                    )
+                chunk_rec = Chunk(
+                    file_id=file_id,
+                    generation_id=generation_id,
+                    start_line=chunk.start_line,
+                    end_line=chunk.end_line,
+                    chunk_type=chunk.chunk_type,
+                    symbol_name=chunk.symbol_name,
+                    content_hash=chunk.content_hash,
+                    content=final_content,
+                    estimated_tokens=chunk.estimated_tokens,
+                    embedding=None,  # filled in batch below
+                )
+                if chunk.content_hash in seen_hashes:
+                    # Duplicate content — skip to avoid UniqueViolation.
+                    # The first chunk with this content already carries
+                    # the symbol_name and file association.
+                    continue
+                seen_hashes.add(chunk.content_hash)
+                session.add(chunk_rec)
+                pending_chunks.append((chunk_rec, final_content))
+                total_chunks += 1
+
+        # Detect symbols (functions, classes) from chunks and persist them
+        # for the new generation (needed for edge resolution, even unchanged)
+        if existing:
+            file_id = existing.id
+        else:
+            file_id = file_ids.get(df.relative_path)
+
+        for chunk in chunks:
+            if chunk.chunk_type in ("function", "class", "method") and chunk.symbol_name:
+                if file_id is None:
+                    continue
                 symbol = Symbol(
                     file_id=file_id,
                     name=chunk.symbol_name,
@@ -224,9 +245,9 @@ async def scan_repository(
                     generation_id=generation_id,
                 )
                 session.add(symbol)
-                file_symbols.add(chunk.symbol_name)
 
         # Store content + defined symbols for edge detection (batched later)
+        # Done for every file, even unchanged ones, so edges are always current
         file_edge_data[df.relative_path] = (content, file_symbols)
 
     # 4b. Flush so that Symbol rows acquire IDs for edge resolution
@@ -246,6 +267,15 @@ async def scan_repository(
                 logger.debug("Embedding unavailable for chunk %s", chunk_rec.id)
 
     # 4c. Detect and persist symbol dependency edges
+    # First, remove edges from older generations to avoid hitting
+    # uq_symbol_edge (which lacks generation_id).
+    await session.execute(
+        sa_delete(SymbolEdge).where(
+            SymbolEdge.repository_id == repo_id,
+            SymbolEdge.generation_id != generation_id,
+        )
+    )
+
     # Build a global set of defined symbol names for cross-file resolution
     all_defined_symbols: set[str] = set()
     for (_, file_syms) in file_edge_data.values():
@@ -264,6 +294,9 @@ async def scan_repository(
     for sym in symbol_rows.scalars():
         symbol_map.setdefault(sym.name, []).append(sym.id)
 
+    # Deduplicate edges across files: uq_symbol_edge lacks generation_id
+    seen_edges: set[tuple[uuid.UUID, uuid.UUID, str]] = set()
+
     for rel_path, (file_content, file_syms) in file_edge_data.items():
         raw_edges = detect_edges(file_content, all_defined_symbols)
         if not raw_edges:
@@ -276,6 +309,10 @@ async def scan_repository(
                 continue
             # Use the first matching symbol ID;
             # for same-name symbols in different files this is an approximation
+            edge_key = (from_ids[0], to_ids[0], edge.relation_type)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
             session.add(
                 SymbolEdge(
                     repository_id=repo_id,
@@ -305,12 +342,21 @@ async def scan_repository(
         .values(state="retired")
     )
 
-    # 5b. Mark chunks belonging to older generations as stale,
-    #     EXCEPT for unchanged files whose chunks are reused.
-    #     Unchanged file chunks stay non-stale so their content
-    #     remains searchable without re-embedding.
+    # 5b. Reassign unchanged file chunks to the new generation so that
+    #     search (which filters by active generation_id) can find them.
+    #     Then mark remaining old-gen chunks as stale.
     stale_exclude: list[uuid.UUID] = list(unchanged_file_ids)
     if stale_exclude:
+        # First, update generation_id for unchanged file chunks
+        await session.execute(
+            update(Chunk)
+            .where(
+                Chunk.file_id.in_(stale_exclude),
+                Chunk.generation_id != generation_id,
+            )
+            .values(generation_id=generation_id)
+        )
+        # Mark old-gen chunks (except unchanged) as stale
         await session.execute(
             update(Chunk)
             .where(
@@ -321,7 +367,6 @@ async def scan_repository(
                 ),
                 Chunk.generation_id != generation_id,
                 Chunk.stale == False,  # noqa: E712
-                Chunk.file_id.not_in(stale_exclude),
             )
             .values(stale=True)
         )
