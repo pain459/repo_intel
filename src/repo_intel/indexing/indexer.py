@@ -387,7 +387,18 @@ async def scan_repository(
         )
 
     # 6. Update generation state
-    generation.chunk_count = total_chunks
+    # Use actual count of chunks assigned to this generation (total_chunks
+    # only counts *newly created* chunks, which is 0 when all files are
+    # unchanged but still reassigned to the new generation).
+    from sqlalchemy import func as sqlfunc  # noqa: PLC0415
+
+    actual_count = await session.scalar(
+        select(sqlfunc.count(Chunk.id)).where(
+            Chunk.generation_id == generation_id,
+            Chunk.stale == False,
+        )
+    )
+    generation.chunk_count = actual_count
     generation.state = "active"
 
     await _complete_job(session, job_id)
