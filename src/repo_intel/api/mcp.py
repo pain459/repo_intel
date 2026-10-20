@@ -109,6 +109,15 @@ async def call_tool(body: ToolCall) -> dict:
             repository_id=body.parameters.get("repository_id"),
         )
 
+    if body.tool == "repo_read_file":
+        return await mcp_server.tool_repo_read_file(
+            factory,
+            relative_path=body.parameters.get("relative_path", ""),
+            repository_id=body.parameters.get("repository_id"),
+            start_line=body.parameters.get("start_line"),
+            end_line=body.parameters.get("end_line"),
+        )
+
     raise HTTPException(404, f"Unknown tool: {body.tool}")
 
 
@@ -195,6 +204,26 @@ async def list_tools() -> dict:
                 "parameters": {
                     "session_id": {"type": "string", "required": False},
                     "repository_id": {"type": "string", "required": False},
+                },
+            },
+            {
+                "name": "repo_read_file",
+                "description": "Read source content from a file in a registered repository",
+                "parameters": {
+                    "relative_path": {"type": "string", "required": True},
+                    "repository_id": {"type": "string", "required": True},
+                    "start_line": {"type": "integer", "required": False},
+                    "end_line": {"type": "integer", "required": False},
+                },
+            },
+            {
+                "name": "repo_dependencies",
+                "description": "Traverse the symbol dependency graph for a given symbol",
+                "parameters": {
+                    "symbol_name": {"type": "string", "required": True},
+                    "repository_id": {"type": "string", "required": False},
+                    "direction": {"type": "string", "required": False, "default": "outgoing"},
+                    "depth": {"type": "integer", "required": False, "default": 2},
                 },
             },
         ]

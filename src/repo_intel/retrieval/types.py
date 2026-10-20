@@ -9,6 +9,14 @@ from typing import Literal
 SearchMethod = Literal["exact", "lexical", "semantic", "symbol"]
 
 
+EvidenceKind = Literal[
+    "exact_source",  # directly from indexed chunk content
+    "inferred",  # derived from symbol lookup / dependencies, not raw text
+    "missing",  # content unavailable (deleted, outside index)
+    "stale",  # content from a retired index generation
+]
+
+
 @dataclass
 class SearchResult:
     """One ranked hit returned by the hybrid search pipeline."""
@@ -30,6 +38,8 @@ class SearchResult:
     is_truncated: bool = False
     # Internal: generation ID for freshness lookup (not serialized to API)
     generation_id: str = ""
+    # Evidence quality: distinguishes exact source from inferred/missing/stale
+    evidence_kind: EvidenceKind = "exact_source"
 
 
 @dataclass

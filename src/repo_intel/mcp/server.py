@@ -173,14 +173,26 @@ async def tool_repo_symbol(
     """Find symbol definitions by name."""
     from sqlalchemy import select  # noqa: PLC0415
 
-    from repo_intel.db.models import FileRecord, Symbol
+    from repo_intel.db.models import FileRecord, IndexGeneration, Symbol
 
     async with session_factory() as session:
+        # Resolve active generation IDs to avoid returning stale duplicates
+        gen_stmt = (
+            select(IndexGeneration.id)
+            .where(IndexGeneration.state == "active")
+        )
+        if repository_id:
+            gen_stmt = gen_stmt.where(
+                IndexGeneration.repository_id == repository_id,
+            )
+        active_gen_ids = [str(gid) for gid in await session.scalars(gen_stmt)]
+
         stmt = (
             select(Symbol, FileRecord.relative_path)
             .join(FileRecord, Symbol.file_id == FileRecord.id)
             .where(
                 Symbol.name.ilike(f"%{symbol_name}%"),
+                Symbol.generation_id.in_(active_gen_ids),
                 FileRecord.deleted == False,  # noqa: E712
             )
             .limit(20)
@@ -248,6 +260,104 @@ async def tool_repo_context(
             for r in results
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# File reading tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_repo_read_file(
+    session_factory,
+    relative_path: str,
+    repository_id: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> dict:
+    """Read source content from a file in a registered repository."""
+    import hashlib as _hl  # noqa: PLC0415
+
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import FileRecord, IndexGeneration, Repository
+    from repo_intel.security.paths import (  # noqa: PLC0415
+        is_safe_relative_path,
+        is_secret_file,
+        PathTraversalError,
+        resolve_safe,
+    )
+    from repo_intel.security.redaction import redact_content
+
+    if not repository_id:
+        return {"error": "repository_id is required"}
+
+    async with session_factory() as session:
+        repo = await session.get(Repository, repository_id)
+        if not repo:
+            return {"error": f"Repository {repository_id} not found"}
+
+        if not is_safe_relative_path(relative_path):
+            return {"error": "Invalid path"}
+
+        try:
+            abs_path = resolve_safe(repo.git_path, relative_path)
+        except PathTraversalError:
+            return {"error": "Path traversal blocked"}
+
+        fr_rows = await session.scalars(
+            select(FileRecord).where(
+                FileRecord.repository_id == repository_id,
+                FileRecord.relative_path == relative_path,
+                FileRecord.deleted == False,  # noqa: E712
+            )
+        )
+        file_rec = fr_rows.first()
+        if not file_rec:
+            return {"error": f"File '{relative_path}' not indexed"}
+
+        if is_secret_file(relative_path):
+            return {"error": "Secret file access blocked"}
+
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                raw = f.read()
+        except (OSError, PermissionError) as exc:
+            return {"error": str(exc), "path": relative_path}
+
+        gen_rows = await session.scalars(
+            select(IndexGeneration).where(
+                IndexGeneration.repository_id == repository_id,
+                IndexGeneration.state == "active",
+            )
+        )
+        active_gen = gen_rows.first()
+        is_fresh = False
+        if active_gen:
+            disk_hash = _hl.sha256(raw.encode()).hexdigest()
+            is_fresh = disk_hash == file_rec.content_hash
+
+        redacted = redact_content(raw)
+        lines = redacted.cleaned_text.splitlines(keepends=True)
+        if start_line is not None and end_line is not None:
+            sliced = lines[start_line - 1: end_line]
+        elif start_line is not None:
+            sliced = lines[start_line - 1:]
+        elif end_line is not None:
+            sliced = lines[:end_line]
+        else:
+            sliced = lines[:5000]
+
+        return {
+            "path": relative_path,
+            "start_line": start_line or 1,
+            "end_line": end_line or len(lines),
+            "total_lines": len(lines),
+            "lines_returned": len(sliced),
+            "content_hash": file_rec.content_hash,
+            "is_fresh": is_fresh,
+            "evidence_kind": "exact_source" if is_fresh else "stale",
+            "content": "".join(sliced),
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -519,8 +519,6 @@ def search(
 @cli.command()
 def status() -> None:
     """Show repository index status."""
-    from sqlalchemy import select  # noqa: PLC0415
-
     from repo_intel.db.models import (
         FileRecord,  # noqa: PLC0415
         IndexGeneration,  # noqa: PLC0415
@@ -529,6 +527,10 @@ def status() -> None:
     from repo_intel.db.session import get_session_factory  # noqa: PLC0415
 
     async def _do_status() -> None:
+        from sqlalchemy import select, func as sqlfunc  # noqa: PLC0415
+
+        from repo_intel.db import models as db_models  # noqa: PLC0415
+
         async with get_session_factory()() as session:
             repos = await session.scalars(
                 select(Repository).order_by(Repository.name)
@@ -542,10 +544,11 @@ def status() -> None:
 
             table = Table(title="Repository Index Status")
             table.add_column("Name")
-            table.add_column("Path")
             table.add_column("Status")
             table.add_column("Files")
             table.add_column("Chunks")
+            table.add_column("Symbols")
+            table.add_column("Edges")
 
             for repo in repos:
                 # Active generation
@@ -559,7 +562,6 @@ def status() -> None:
                     .limit(1)
                 )
                 gen = (await session.scalars(gen_stmt)).first()
-                chunk_count = gen.chunk_count if gen else 0
 
                 # File count (non-deleted)
                 file_count = len(
@@ -571,12 +573,36 @@ def status() -> None:
                     ))
                 )
 
+                # Chunk count (non-stale, scoped to active generation)
+                if gen:
+                    chunk_count = await session.scalar(
+                        select(sqlfunc.count(db_models.Chunk.id)).where(
+                            db_models.Chunk.generation_id == gen.id,
+                            db_models.Chunk.stale == False,  # noqa: E712
+                        )
+                    ) or 0
+                    symbol_count = await session.scalar(
+                        select(sqlfunc.count(db_models.Symbol.id)).where(
+                            db_models.Symbol.generation_id == gen.id,
+                        )
+                    ) or 0
+                    edge_count = await session.scalar(
+                        select(sqlfunc.count(db_models.SymbolEdge.id)).where(
+                            db_models.SymbolEdge.generation_id == gen.id,
+                        )
+                    ) or 0
+                else:
+                    chunk_count = 0
+                    symbol_count = 0
+                    edge_count = 0
+
                 table.add_row(
                     repo.name,
-                    repo.git_path,
                     repo.status,
                     str(file_count),
                     str(chunk_count),
+                    str(symbol_count),
+                    str(edge_count),
                 )
 
             console.print(table)

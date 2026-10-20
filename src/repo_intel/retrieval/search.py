@@ -524,9 +524,14 @@ async def hybrid_search(
         detail.score = score
         detail.retrieval_methods = methods  # type: ignore[assignment]
         detail.relevance_reason = _build_reason(methods)
+        # Default evidence_kind: chunks from hybrid search are exact_source
+        if not detail.text:
+            detail.evidence_kind = "missing"
+        else:
+            detail.evidence_kind = "exact_source"
         results.append(detail)
 
-    # 6. Populate freshness metadata
+    # 6. Populate freshness metadata and update evidence_kind for stale content
     now = datetime.now(UTC)
     for r in results:
         gid = r.generation_id
@@ -540,6 +545,9 @@ async def hybrid_search(
                     )
                     age_seconds = (now - created_at).total_seconds()
                     r.is_stale = age_seconds > _STALE_THRESHOLD_SECONDS
+                    # Mark stale content so consumers can distinguish
+                    if r.is_stale and r.evidence_kind == "exact_source":
+                        r.evidence_kind = "stale"
                 except (ValueError, TypeError):
                     r.is_stale = False
         else:

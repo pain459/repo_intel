@@ -267,12 +267,17 @@ async def scan_repository(
                 logger.debug("Embedding unavailable for chunk %s", chunk_rec.id)
 
     # 4c. Detect and persist symbol dependency edges
-    # First, remove edges from older generations to avoid hitting
-    # uq_symbol_edge (which lacks generation_id).
+    # First, remove old-generation edges then symbols to avoid duplication
+    # and FK constraint hits (symbol_edges references symbols).
+    # Delete edges before symbols because of the FK relationship.
     await session.execute(
         sa_delete(SymbolEdge).where(
             SymbolEdge.repository_id == repo_id,
-            SymbolEdge.generation_id != generation_id,
+        )
+    )
+    await session.execute(
+        sa_delete(Symbol).where(
+            Symbol.generation_id != generation_id,
         )
     )
 
@@ -395,7 +400,7 @@ async def scan_repository(
     actual_count = await session.scalar(
         select(sqlfunc.count(Chunk.id)).where(
             Chunk.generation_id == generation_id,
-            Chunk.stale == False,
+            Chunk.stale == False,  # noqa: E712
         )
     )
     generation.chunk_count = actual_count

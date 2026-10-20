@@ -225,16 +225,29 @@ async def repo_symbol(
     """
     from sqlalchemy import select  # noqa: PLC0415
 
-    from repo_intel.db.models import Chunk, FileRecord, Symbol
+    from repo_intel.db.models import Chunk, FileRecord, IndexGeneration, Symbol
 
     factory = get_session_factory()
     async with factory() as session:
-        # 1. Query the Symbol table (primary source)
+        # Resolve active generation IDs so we only return symbols from the
+        # current index scan, preventing duplicates from stale generations.
+        gen_stmt = (
+            select(IndexGeneration.id)
+            .where(IndexGeneration.state == "active")
+        )
+        if repository_id:
+            gen_stmt = gen_stmt.where(
+                IndexGeneration.repository_id == repository_id,
+            )
+        active_gen_ids = [str(gid) for gid in await session.scalars(gen_stmt)]
+
+        # 1. Query the Symbol table (primary source, scoped to active generation)
         stmt = (
             select(Symbol, FileRecord.relative_path)
             .join(FileRecord, Symbol.file_id == FileRecord.id)
             .where(
                 Symbol.name.ilike(f"%{symbol_name}%"),
+                Symbol.generation_id.in_(active_gen_ids),
                 FileRecord.deleted == False,  # noqa: E712
             )
             .limit(20)
@@ -287,6 +300,137 @@ async def repo_symbol(
                 })
 
     return {"symbol": symbol_name, "definitions": symbol_results}
+
+
+@mcp.tool
+@_instrument_tool("repo_read_file")
+async def repo_read_file(
+    relative_path: str,
+    repository_id: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> dict:
+    """Read source content from a file in a registered repository.
+
+    Returns the file content (or a line range) from the repository's
+    working tree on disk, validated against the index for freshness.
+    Security boundaries: path traversal protection, secret file exclusion,
+    repository-scope confinement.
+
+    Args:
+        relative_path: Path within the repository (e.g. 'backend/app/main.py').
+        repository_id: Required repository UUID to scope the read.
+        start_line: Optional 1-based start line to return.
+        end_line: Optional 1-based end line to return.
+    """
+    import hashlib as _hl  # noqa: PLC0415
+
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import FileRecord, IndexGeneration, Repository
+    from repo_intel.security.paths import (  # noqa: PLC0415
+        is_safe_relative_path,
+        is_secret_file,
+        PathTraversalError,
+        resolve_safe,
+    )
+    from repo_intel.security.redaction import redact_content
+
+    if not repository_id:
+        return {"error": "repository_id is required for repo_read_file"}
+
+    factory = get_session_factory()
+    async with factory() as session:
+        # 1. Resolve repository
+        repo = await session.get(Repository, repository_id)
+        if not repo:
+            return {"error": f"Repository {repository_id} not found"}
+
+        # 2. Validate path safety
+        if not is_safe_relative_path(relative_path):
+            return {"error": "Invalid path: contains disallowed characters or patterns"}
+
+        # 3. Resolve absolute path (prevents traversal)
+        try:
+            abs_path = resolve_safe(repo.git_path, relative_path)
+        except PathTraversalError:
+            return {"error": f"Path traversal detected in '{relative_path}'"}
+
+        # 4. Check that file is indexed (exists in files table, non-deleted)
+        fr_rows = await session.scalars(
+            select(FileRecord).where(
+                FileRecord.repository_id == repository_id,
+                FileRecord.relative_path == relative_path,
+                FileRecord.deleted == False,  # noqa: E712
+            )
+        )
+        file_rec = fr_rows.first()
+        if not file_rec:
+            return {"error": f"File '{relative_path}' is not indexed in repository"}
+
+        # 5. Check if file is a secret file
+        if is_secret_file(relative_path):
+            return {"error": f"File '{relative_path}' is excluded (secret/credential file)"}
+
+        # 6. Read content from disk (not DB) for freshness
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                raw = f.read()
+        except (OSError, PermissionError) as exc:
+            return {
+                "error": f"Cannot read file: {exc}",
+                "path": relative_path,
+            }
+
+        # 7. Check freshness against active generation
+        gen_rows = await session.scalars(
+            select(IndexGeneration).where(
+                IndexGeneration.repository_id == repository_id,
+                IndexGeneration.state == "active",
+            )
+        )
+        active_gen = gen_rows.first()
+        is_fresh = False
+        if active_gen:
+            disk_hash = _hl.sha256(raw.encode()).hexdigest()
+            is_fresh = (disk_hash == file_rec.content_hash)
+
+        # 8. Apply secret redaction to content
+        redacted = redact_content(raw)
+
+        # 9. Slice to line range if requested
+        lines = redacted.cleaned_text.splitlines(keepends=True)
+        if start_line is not None and end_line is not None:
+            sliced = lines[start_line - 1: end_line]
+        elif start_line is not None:
+            sliced = lines[start_line - 1:]
+        elif end_line is not None:
+            sliced = lines[:end_line]
+        else:
+            # Bounded read: max 5000 lines to prevent large responses
+            sliced = lines[:5000]
+
+        content = "".join(sliced)
+        evidence_kind = "exact_source"
+        if not is_fresh:
+            evidence_kind = "stale"
+
+        return {
+            "path": relative_path,
+            "start_line": start_line or 1,
+            "end_line": (end_line or len(lines)),
+            "total_lines": len(lines),
+            "lines_returned": len(sliced),
+            "content_hash": file_rec.content_hash,
+            "is_fresh": is_fresh,
+            "evidence_kind": evidence_kind,
+            "redacted_patterns": (
+                redacted.pattern_labels
+                if redacted.patterns_matched > 0
+                else []
+            ),
+            "content": content,
+        }
 
 
 @mcp.tool
