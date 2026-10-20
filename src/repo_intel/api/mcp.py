@@ -76,9 +76,28 @@ async def call_tool(body: ToolCall) -> dict:
             repository_id=body.parameters.get("repository_id"),
             evidence=body.parameters.get("evidence"),
             source_commit=body.parameters.get("source_commit"),
+            author=body.parameters.get("author"),
         )
 
-    if body.tool == "memory_read":
+    # memory_record is an alias for memory_write
+    if body.tool == "memory_record":
+        kind = body.parameters.get("kind")
+        statement = body.parameters.get("statement")
+        if not kind or not statement:
+            raise HTTPException(
+                400, "memory_record requires 'kind' and 'statement' parameters"
+            )
+        return await mcp_server.tool_memory_write(
+            factory,
+            kind=kind,
+            statement=statement,
+            repository_id=body.parameters.get("repository_id"),
+            evidence=body.parameters.get("evidence"),
+            source_commit=body.parameters.get("source_commit"),
+            author=body.parameters.get("author"),
+        )
+
+    if body.tool == "memory_read" or body.tool == "memory_search":
         return await mcp_server.tool_memory_read(
             factory,
             query=body.parameters.get("query"),
@@ -102,8 +121,33 @@ async def call_tool(body: ToolCall) -> dict:
             evidence=body.parameters.get("evidence"),
         )
 
-    if body.tool == "checkpoint_get":
+    if body.tool == "checkpoint_get" or body.tool == "task_resume":
         return await mcp_server.tool_checkpoint_get(
+            factory,
+            session_id=body.parameters.get("session_id"),
+            repository_id=body.parameters.get("repository_id"),
+        )
+
+    if body.tool == "compaction_checkpoint_save":
+        objective = body.parameters.get("objective")
+        if not objective:
+            raise HTTPException(
+                400,
+                "compaction_checkpoint_save requires 'objective' parameter",
+            )
+        return await mcp_server.tool_compaction_checkpoint_save(
+            factory,
+            objective=objective,
+            session_id=body.parameters.get("session_id"),
+            repository_id=body.parameters.get("repository_id"),
+            current_state=body.parameters.get("current_state"),
+            changed_files=body.parameters.get("changed_files"),
+            pending_steps=body.parameters.get("pending_steps"),
+            evidence=body.parameters.get("evidence"),
+        )
+
+    if body.tool == "session_bootstrap":
+        return await mcp_server.tool_session_bootstrap(
             factory,
             session_id=body.parameters.get("session_id"),
             repository_id=body.parameters.get("repository_id"),
@@ -187,11 +231,34 @@ async def list_tools() -> dict:
                     "repository_id": {"type": "string", "required": False},
                     "evidence": {"type": "object", "required": False},
                     "source_commit": {"type": "string", "required": False},
+                    "author": {"type": "string", "required": False},
+                },
+            },
+            {
+                "name": "memory_record",
+                "description": "Alias for memory_write — write structured observations",
+                "parameters": {
+                    "kind": {"type": "string", "required": True},
+                    "statement": {"type": "string", "required": True},
+                    "repository_id": {"type": "string", "required": False},
+                    "evidence": {"type": "object", "required": False},
+                    "source_commit": {"type": "string", "required": False},
+                    "author": {"type": "string", "required": False},
                 },
             },
             {
                 "name": "memory_read",
                 "description": "Read agent memories with filtering and scoring",
+                "parameters": {
+                    "query": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                    "kind": {"type": "string", "required": False},
+                    "limit": {"type": "integer", "required": False, "default": 20},
+                },
+            },
+            {
+                "name": "memory_search",
+                "description": "Alias for memory_read — search memories by query",
                 "parameters": {
                     "query": {"type": "string", "required": False},
                     "repository_id": {"type": "string", "required": False},
@@ -215,6 +282,35 @@ async def list_tools() -> dict:
             {
                 "name": "checkpoint_get",
                 "description": "Retrieve the latest checkpoint for a session",
+                "parameters": {
+                    "session_id": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                },
+            },
+            {
+                "name": "task_resume",
+                "description": "Alias for checkpoint_get — resume a previous session",
+                "parameters": {
+                    "session_id": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                },
+            },
+            {
+                "name": "compaction_checkpoint_save",
+                "description": "Save a checkpoint optimized for compaction recovery",
+                "parameters": {
+                    "objective": {"type": "string", "required": True},
+                    "session_id": {"type": "string", "required": False},
+                    "repository_id": {"type": "string", "required": False},
+                    "current_state": {"type": "string", "required": False},
+                    "changed_files": {"type": "array", "required": False},
+                    "pending_steps": {"type": "array", "required": False},
+                    "evidence": {"type": "object", "required": False},
+                },
+            },
+            {
+                "name": "session_bootstrap",
+                "description": "Restore session state after compaction or restart",
                 "parameters": {
                     "session_id": {"type": "string", "required": False},
                     "repository_id": {"type": "string", "required": False},

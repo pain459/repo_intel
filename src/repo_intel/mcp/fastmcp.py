@@ -275,21 +275,29 @@ async def repo_symbol(
         #    chunker emits boundary chunks with symbol_name set) are still
         #    discoverable.
         if not symbol_results:
+            # Resolve active generation IDs so the fallback only returns
+            # chunks from the current index scan (defense-in-depth).
+            gen_stmt = (
+                select(IndexGeneration.id)
+                .where(IndexGeneration.state == "active")
+            )
+            if repository_id:
+                gen_stmt = gen_stmt.where(
+                    IndexGeneration.repository_id == repository_id,
+                )
+            active_gen_ids = [str(gid) for gid in await session.scalars(gen_stmt)]
+
             chunk_stmt = (
                 select(Chunk.symbol_name, Chunk.start_line, Chunk.end_line,
                        Chunk.chunk_type, FileRecord.relative_path)
                 .join(FileRecord, Chunk.file_id == FileRecord.id)
                 .where(
                     Chunk.symbol_name.ilike(f"%{symbol_name}%"),
-                    Chunk.stale == False,  # noqa: E712
+                    Chunk.generation_id.in_(active_gen_ids),
                     FileRecord.deleted == False,  # noqa: E712
                 )
                 .limit(20)
             )
-            if repository_id:
-                chunk_stmt = chunk_stmt.where(
-                    FileRecord.repository_id == repository_id,
-                )
             chunk_rows = await session.execute(chunk_stmt)
             for cname, cstart, cend, ckind, cpath in chunk_rows:
                 symbol_results.append({
@@ -1065,15 +1073,18 @@ async def repo_dependencies(
                 visited_edges.add(str(edge.id))
                 if direction == "outgoing":
                     other_id = str(edge.to_symbol_id)
-                    from_sym_id = str(edge.from_symbol_id)
+                    # edge direction = call direction: from→to is caller→callee
+                    from_sym = await session.get(Symbol, str(edge.from_symbol_id))
+                    to_sym = await session.get(Symbol, other_id)
+                    from_name = from_sym.name if from_sym else "unknown"
+                    to_name = to_sym.name if to_sym else "unknown"
                 else:
                     other_id = str(edge.from_symbol_id)
-                    from_sym_id = str(edge.to_symbol_id)
-                # Fetch symbol names
-                target = await session.get(Symbol, other_id)
-                source = await session.get(Symbol, from_sym_id)
-                to_name = target.name if target else "unknown"
-                from_name = source.name if source else "unknown"
+                    # for incoming, edge is callee→caller, so caller is `from`
+                    from_sym = await session.get(Symbol, other_id)
+                    to_sym = await session.get(Symbol, str(edge.to_symbol_id))
+                    from_name = from_sym.name if from_sym else "unknown"
+                    to_name = to_sym.name if to_sym else "unknown"
                 edges_found.append({
                     "from_symbol": from_name,
                     "to_symbol": to_name,

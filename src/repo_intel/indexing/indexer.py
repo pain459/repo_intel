@@ -317,6 +317,9 @@ async def scan_repository(
             edge_key = (from_ids[0], to_ids[0], edge.relation_type)
             if edge_key in seen_edges:
                 continue
+            # Skip self-loops (from_symbol == to_symbol)
+            if from_ids[0] == to_ids[0]:
+                continue
             seen_edges.add(edge_key)
             session.add(
                 SymbolEdge(

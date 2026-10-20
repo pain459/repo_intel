@@ -155,6 +155,13 @@ def _find_boundaries(lines: list[str], language: str) -> list[tuple[int, int, st
     if not patterns:
         return []
 
+    # Control-flow keywords that should never be indexed as symbols
+    _CONTROL_FLOW = frozenset({
+        "if", "else", "elif", "for", "while", "switch", "case",
+        "try", "catch", "finally", "with", "assert", "return",
+        "throw", "await", "yield",
+    })
+
     boundaries: list[tuple[int, int, str, str | None]] = []
     for i, line in enumerate(lines):
         _ = line.rstrip()  # normalize for later use
@@ -174,10 +181,14 @@ def _find_boundaries(lines: list[str], language: str) -> list[tuple[int, int, st
                 name = None
             if isinstance(name, int):
                 name = None
+            # Skip control-flow keywords masquerading as symbols
+            if name in _CONTROL_FLOW:
+                break
             pat_lower = pattern.pattern.lower()
             kind = (
                 "function"
                 if "func" in pat_lower or "fn" in pat_lower
+                or "arrow" in pat_lower or "method" in pat_lower
                 else "class"
             )
             # Find the end of the region by looking for the next boundary at same/lower indent

@@ -222,13 +222,24 @@ async def tool_repo_symbol(
         from repo_intel.db.models import Chunk  # noqa: PLC0415
 
         async with session_factory() as session:
+            # Resolve active generation IDs for defense-in-depth
+            gen_stmt = (
+                select(IndexGeneration.id)
+                .where(IndexGeneration.state == "active")
+            )
+            if repository_id:
+                gen_stmt = gen_stmt.where(
+                    IndexGeneration.repository_id == repository_id,
+                )
+            active_gen_ids = [str(gid) for gid in await session.scalars(gen_stmt)]
+
             chunk_stmt = (
                 select(Chunk.symbol_name, Chunk.start_line, Chunk.end_line,
                        Chunk.chunk_type, FileRecord.relative_path)
                 .join(FileRecord, Chunk.file_id == FileRecord.id)
                 .where(
                     Chunk.symbol_name.ilike(f"%{symbol_name}%"),
-                    Chunk.stale == False,  # noqa: E712
+                    Chunk.generation_id.in_(active_gen_ids),
                     FileRecord.deleted == False,  # noqa: E712
                 )
                 .limit(20)
@@ -481,15 +492,19 @@ async def tool_repo_dependencies(
                 visited_edges.add(str(edge.id))
                 if direction == "outgoing":
                     other_id = str(edge.to_symbol_id)
-                    from_sym_id = str(edge.from_symbol_id)
+                    # from→to is caller→callee (edge direction = call direction)
+                    from_sym = await session.get(Symbol, str(edge.from_symbol_id))
+                    to_sym = await session.get(Symbol, other_id)
+                    from_name = from_sym.name if from_sym else "unknown"
+                    to_name = to_sym.name if to_sym else "unknown"
                 else:
                     other_id = str(edge.from_symbol_id)
-                    from_sym_id = str(edge.to_symbol_id)
-                # Fetch symbol names
-                target = await session.get(Symbol, other_id)
-                source = await session.get(Symbol, from_sym_id)
-                to_name = target.name if target else "unknown"
-                from_name = source.name if source else "unknown"
+                    # for incoming, edge direction is callee→caller,
+                    # so from=caller, to=target (callee)
+                    from_sym = await session.get(Symbol, other_id)
+                    to_sym = await session.get(Symbol, str(edge.to_symbol_id))
+                    from_name = from_sym.name if from_sym else "unknown"
+                    to_name = to_sym.name if to_sym else "unknown"
                 edges_found.append({
                     "from_symbol": from_name,
                     "to_symbol": to_name,
@@ -523,6 +538,7 @@ async def tool_memory_write(
     repository_id: str | None = None,
     evidence: dict | None = None,
     source_commit: str | None = None,
+    author: str | None = None,
 ) -> dict:
     """Write a new agent memory."""
     from sqlalchemy import select  # noqa: PLC0415
@@ -546,6 +562,7 @@ async def tool_memory_write(
             status="candidate",
             evidence=evidence,
             source_commit=source_commit,
+            author=author,
         )
         session.add(memory)
         await session.commit()
@@ -603,6 +620,77 @@ async def tool_memory_read(
             for m in memories
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Compaction & session recovery tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_compaction_checkpoint_save(
+    session_factory,
+    objective: str,
+    session_id: str | None = None,
+    repository_id: str | None = None,
+    current_state: str | None = None,
+    changed_files: list[str] | None = None,
+    pending_steps: list[str] | None = None,
+    evidence: dict | None = None,
+) -> dict:
+    """Save a checkpoint optimized for compaction recovery."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import Repository, TaskCheckpoint  # noqa: PLC0415
+
+    async with session_factory() as session:
+        if repository_id:
+            repo = (
+                await session.scalars(
+                    select(Repository).where(Repository.id == repository_id)
+                )
+            ).first()
+            if not repo:
+                return {"error": f"Repository {repository_id} not found"}
+
+        evidence = evidence or {}
+        evidence.setdefault("compaction", {})["save_type"] = "pre_compaction"
+
+        cp = TaskCheckpoint(
+            repository_id=repository_id,
+            session_id=session_id,
+            objective=objective,
+            current_state=current_state,
+            changed_files=changed_files,
+            pending_steps=pending_steps,
+            evidence=evidence,
+        )
+        session.add(cp)
+        await session.commit()
+        await session.refresh(cp)
+
+    return {
+        "id": str(cp.id),
+        "session_id": cp.session_id,
+        "objective": cp.objective,
+        "created_at": str(cp.created_at),
+        "message": "Compaction checkpoint saved",
+    }
+
+
+async def tool_session_bootstrap(
+    session_factory,
+    session_id: str | None = None,
+    repository_id: str | None = None,
+) -> dict:
+    """Restore session state after compaction or restart."""
+    from repo_intel.compaction.manager import (  # noqa: PLC0415
+        session_bootstrap as _bootstrap,
+    )
+
+    return await _bootstrap(
+        session_id=session_id,
+        repository_id=repository_id,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -569,6 +569,10 @@ async def hybrid_search(
             if (r.score / max_score if max_score else 0) >= request.min_score
         ]
 
+    # 9. Enforce final limit (dedup and token-budget trimming may have
+    #    reduced the count, but never exceed the requested limit).
+    results = results[:request.limit]
+
     return results
 
 
