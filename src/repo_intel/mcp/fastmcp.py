@@ -205,6 +205,8 @@ async def repo_search(
                 "score": round(r.score, 6),
                 "generation_created_at": r.generation_created_at,
                 "is_stale": r.is_stale,
+                "is_truncated": r.is_truncated,
+                "evidence_kind": r.evidence_kind,
             }
             for r in results
         ],
@@ -421,6 +423,7 @@ async def repo_read_file(
             "end_line": (end_line or len(lines)),
             "total_lines": len(lines),
             "lines_returned": len(sliced),
+            "is_truncated": len(sliced) < len(lines),
             "content_hash": file_rec.content_hash,
             "is_fresh": is_fresh,
             "evidence_kind": evidence_kind,
@@ -1037,37 +1040,40 @@ async def repo_dependencies(
         start_ids = {str(s.id) for s in symbols}
 
         # BFS traversal
-        visited: set[str] = set()
+        visited_edges: set[str] = set()
+        visited_symbols: set[str] = set()
+        visited_symbols.update(start_ids)
         edges_found: list[dict] = []
         current_ids = start_ids
 
         for _depth_level in range(min(depth, 5)):
             if not current_ids or len(edges_found) >= 50:
                 break
+            if direction == "outgoing":
+                edge_cond = SymbolEdge.from_symbol_id.in_(current_ids)
+            else:
+                edge_cond = SymbolEdge.to_symbol_id.in_(current_ids)
             edge_stmt = select(SymbolEdge).where(
-                SymbolEdge.from_symbol_id.in_(current_ids)
-                if direction == "outgoing"
-                else SymbolEdge.to_symbol_id.in_(current_ids),
-            ).where(
+                edge_cond,
                 SymbolEdge.generation_id.in_(active_gen_ids),
             )
             rows = await session.scalars(edge_stmt)
             next_ids: set[str] = set()
             for edge in rows:
-                if str(edge.id) in visited:
+                if str(edge.id) in visited_edges:
                     continue
-                visited.add(str(edge.id))
-                other_id = (
-                    str(edge.to_symbol_id)
-                    if direction == "outgoing"
-                    else str(edge.from_symbol_id)
-                )
-                # Fetch the target symbol name
+                visited_edges.add(str(edge.id))
+                if direction == "outgoing":
+                    other_id = str(edge.to_symbol_id)
+                    from_sym_id = str(edge.from_symbol_id)
+                else:
+                    other_id = str(edge.from_symbol_id)
+                    from_sym_id = str(edge.to_symbol_id)
+                # Fetch symbol names
                 target = await session.get(Symbol, other_id)
+                source = await session.get(Symbol, from_sym_id)
                 to_name = target.name if target else "unknown"
-                from_name = (
-                    symbols[0].name if direction == "outgoing" else to_name
-                )
+                from_name = source.name if source else "unknown"
                 edges_found.append({
                     "from_symbol": from_name,
                     "to_symbol": to_name,
@@ -1075,8 +1081,10 @@ async def repo_dependencies(
                     "evidence_location": edge.evidence_location,
                     "confidence": edge.confidence,
                 })
-                next_ids.add(other_id)
-            current_ids = next_ids - visited
+                if other_id not in visited_symbols:
+                    next_ids.add(other_id)
+                    visited_symbols.add(other_id)
+            current_ids = next_ids
 
     return {
         "symbol": symbol_name,

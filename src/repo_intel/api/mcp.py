@@ -118,6 +118,20 @@ async def call_tool(body: ToolCall) -> dict:
             end_line=body.parameters.get("end_line"),
         )
 
+    if body.tool == "repo_dependencies":
+        symbol_name = body.parameters.get("symbol_name")
+        if not symbol_name:
+            raise HTTPException(
+                400, "repo_dependencies requires 'symbol_name' parameter"
+            )
+        return await mcp_server.tool_repo_dependencies(
+            factory,
+            symbol_name=symbol_name,
+            repository_id=body.parameters.get("repository_id"),
+            direction=body.parameters.get("direction", "outgoing"),
+            depth=int(body.parameters.get("depth", 2)),
+        )
+
     raise HTTPException(404, f"Unknown tool: {body.tool}")
 
 

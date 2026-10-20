@@ -159,6 +159,10 @@ async def tool_repo_search(
                 "text": r.text[:2000],
                 "retrieval_methods": r.retrieval_methods,
                 "score": round(r.score, 6),
+                "generation_created_at": r.generation_created_at,
+                "is_stale": r.is_stale,
+                "is_truncated": r.is_truncated,
+                "evidence_kind": r.evidence_kind,
             }
             for r in results
         ],
@@ -210,7 +214,39 @@ async def tool_repo_symbol(
             "file": path,
             "start_line": symbol.start_line,
             "end_line": symbol.end_line,
+            "source": "symbol",
         })
+
+    # Fallback: search Chunk.symbol_name if Symbol table returned nothing
+    if not results:
+        from repo_intel.db.models import Chunk  # noqa: PLC0415
+
+        async with session_factory() as session:
+            chunk_stmt = (
+                select(Chunk.symbol_name, Chunk.start_line, Chunk.end_line,
+                       Chunk.chunk_type, FileRecord.relative_path)
+                .join(FileRecord, Chunk.file_id == FileRecord.id)
+                .where(
+                    Chunk.symbol_name.ilike(f"%{symbol_name}%"),
+                    Chunk.stale == False,  # noqa: E712
+                    FileRecord.deleted == False,  # noqa: E712
+                )
+                .limit(20)
+            )
+            if repository_id:
+                chunk_stmt = chunk_stmt.where(
+                    FileRecord.repository_id == repository_id,
+                )
+            chunk_rows = await session.execute(chunk_stmt)
+            for cname, cstart, cend, ckind, cpath in chunk_rows:
+                results.append({
+                    "name": cname,
+                    "kind": ckind or "unknown",
+                    "file": cpath,
+                    "start_line": cstart,
+                    "end_line": cend,
+                    "source": "chunk_fallback",
+                })
 
     return {"symbol": symbol_name, "definitions": results}
 
@@ -353,11 +389,126 @@ async def tool_repo_read_file(
             "end_line": end_line or len(lines),
             "total_lines": len(lines),
             "lines_returned": len(sliced),
+            "is_truncated": len(sliced) < len(lines),
             "content_hash": file_rec.content_hash,
             "is_fresh": is_fresh,
             "evidence_kind": "exact_source" if is_fresh else "stale",
+            "redacted_patterns": (
+                redacted.pattern_labels
+                if redacted.patterns_matched > 0
+                else []
+            ),
             "content": "".join(sliced),
         }
+
+
+# ---------------------------------------------------------------------------
+# Dependency graph tools
+# ---------------------------------------------------------------------------
+
+
+async def tool_repo_dependencies(
+    session_factory,
+    symbol_name: str,
+    repository_id: str | None = None,
+    direction: str = "outgoing",
+    depth: int = 2,
+) -> dict:
+    """Traverse the symbol dependency graph for a given symbol."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from repo_intel.db.models import (  # noqa: PLC0415
+        FileRecord,
+        IndexGeneration,
+        Symbol,
+        SymbolEdge,
+    )
+
+    async with session_factory() as session:
+        # Resolve active generation IDs
+        gen_stmt = (
+            select(IndexGeneration.id)
+            .where(IndexGeneration.state == "active")
+        )
+        if repository_id:
+            gen_stmt = gen_stmt.where(
+                IndexGeneration.repository_id == repository_id,
+            )
+        active_gen_ids = [str(gid) for gid in await session.scalars(gen_stmt)]
+
+        # Find starting symbol (only from active generations)
+        stmt = select(Symbol).where(
+            Symbol.name.ilike(f"%{symbol_name}%"),
+            Symbol.generation_id.in_(active_gen_ids),
+        ).limit(5)
+        if repository_id:
+            stmt = stmt.join(FileRecord).where(
+                FileRecord.repository_id == repository_id,
+            )
+        symbols = list(await session.scalars(stmt))
+        if not symbols:
+            return {
+                "error": f"No symbol matching '{symbol_name}' found",
+                "edges": [],
+            }
+
+        start_ids = {str(s.id) for s in symbols}
+
+        # BFS traversal
+        visited_edges: set[str] = set()
+        visited_symbols: set[str] = set()
+        visited_symbols.update(start_ids)
+        edges_found: list[dict] = []
+        current_ids = start_ids
+
+        for _depth_level in range(min(depth, 5)):
+            if not current_ids or len(edges_found) >= 50:
+                break
+            if direction == "outgoing":
+                edge_cond = SymbolEdge.from_symbol_id.in_(current_ids)
+            else:
+                edge_cond = SymbolEdge.to_symbol_id.in_(current_ids)
+
+            edge_stmt = select(SymbolEdge).where(
+                edge_cond,
+                SymbolEdge.generation_id.in_(active_gen_ids),
+            )
+            rows = await session.scalars(edge_stmt)
+            next_ids: set[str] = set()
+            for edge in rows:
+                if str(edge.id) in visited_edges:
+                    continue
+                visited_edges.add(str(edge.id))
+                if direction == "outgoing":
+                    other_id = str(edge.to_symbol_id)
+                    from_sym_id = str(edge.from_symbol_id)
+                else:
+                    other_id = str(edge.from_symbol_id)
+                    from_sym_id = str(edge.to_symbol_id)
+                # Fetch symbol names
+                target = await session.get(Symbol, other_id)
+                source = await session.get(Symbol, from_sym_id)
+                to_name = target.name if target else "unknown"
+                from_name = source.name if source else "unknown"
+                edges_found.append({
+                    "from_symbol": from_name,
+                    "to_symbol": to_name,
+                    "relation_type": edge.relation_type,
+                    "evidence_location": edge.evidence_location,
+                    "confidence": edge.confidence,
+                })
+                if other_id not in visited_symbols:
+                    next_ids.add(other_id)
+                    visited_symbols.add(other_id)
+            current_ids = next_ids
+
+    return {
+        "symbol": symbol_name,
+        "direction": direction,
+        "depth": depth,
+        "num_edges": len(edges_found),
+        "edges": edges_found,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +595,9 @@ async def tool_memory_read(
                 "statement": m.statement,
                 "status": m.status,
                 "repository_id": str(m.repository_id) if m.repository_id else None,
+                "evidence": m.evidence,
+                "source_commit": m.source_commit,
+                "author": m.author,
                 "created_at": str(m.created_at),
             }
             for m in memories
