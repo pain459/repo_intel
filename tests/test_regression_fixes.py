@@ -270,12 +270,10 @@ class TestSymbolDedup:
         async with factory() as session:
             repo = (
                 await session.scalars(
-                    select(Repository).where(
-                        Repository.name == "fastapi-template",
-                    )
+                    select(Repository).order_by(Repository.created_at.desc()).limit(1)
                 )
             ).first()
-            assert repo is not None, "fastapi-template repo not registered"
+            assert repo is not None, "no repository registered"
 
             # Get active gen ids
             gen_ids = await session.scalars(
@@ -313,9 +311,7 @@ class TestSymbolDedup:
         async with factory() as session:
             repo = (
                 await session.scalars(
-                    select(Repository).where(
-                        Repository.name == "fastapi-template",
-                    )
+                    select(Repository).order_by(Repository.created_at.desc()).limit(1)
                 )
             ).first()
             assert repo is not None
@@ -396,13 +392,9 @@ class TestEdgeQuality:
 
         factory = get_session_factory()
         async with factory() as session:
-            repo = (
-                await session.scalars(
-                    select(Repository).where(
-                        Repository.name == "fastapi-template",
-                    )
-                )
-            ).first()
+            repo = await session.scalar(
+                select(Repository).order_by(Repository.created_at.desc()).limit(1)
+            )
             assert repo is not None
 
             gen_ids = await session.scalars(
@@ -451,13 +443,9 @@ class TestRepoReadFile:
 
         async def get_repo_id():
             async with factory() as session:
-                repo = (
-                    await session.scalars(
-                        select(Repository).where(
-                            Repository.name == "fastapi-template",
-                        )
-                    )
-                ).first()
+                repo = await session.scalar(
+                    select(Repository).order_by(Repository.created_at.desc()).limit(1)
+                )
                 return str(repo.id)
 
         repo_id = asyncio.run(get_repo_id())
@@ -490,13 +478,9 @@ class TestRepoReadFile:
             async with factory() as session:
                 from repo_intel.db.models import Repository
 
-                repo = (
-                    await session.scalars(
-                        select(Repository).where(
-                            Repository.name == "fastapi-template",
-                        )
-                    )
-                ).first()
+                repo = await session.scalar(
+                    select(Repository).order_by(Repository.created_at.desc()).limit(1)
+                )
                 return str(repo.id)
 
         repo_id = asyncio.run(get_repo_id())
@@ -525,13 +509,9 @@ class TestRepoReadFile:
             async with factory() as session:
                 from repo_intel.db.models import Repository
 
-                repo = (
-                    await session.scalars(
-                        select(Repository).where(
-                            Repository.name == "fastapi-template",
-                        )
-                    )
-                ).first()
+                repo = await session.scalar(
+                    select(Repository).order_by(Repository.created_at.desc()).limit(1)
+                )
                 return str(repo.id)
 
         repo_id = asyncio.run(get_repo_id())

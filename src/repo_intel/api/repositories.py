@@ -246,7 +246,12 @@ async def delete_repository(repo_id: uuid.UUID) -> dict:
         FileRecord,
         IndexGeneration,
         IndexJob,
+        Memory,
         Repository,
+        RetrievalEvent,
+        Symbol,
+        SymbolEdge,
+        TaskCheckpoint,
     )
     from repo_intel.db.session import get_session_factory
 
@@ -261,28 +266,89 @@ async def delete_repository(repo_id: uuid.UUID) -> dict:
 
         repo_name = repo.name
 
-        # Delete in correct order to respect foreign keys
-        # Find active generations and get their chunk IDs
-        gen_stmt = (
-            select(IndexGeneration.id)
-            .where(IndexGeneration.repository_id == repo_id)
-        )
-        gen_ids = [str(g) for g in (await session.scalars(gen_stmt)).all()]
+        # Delete in correct order to respect foreign keys:
+        # SymbolEdge → (from_symbol_id, to_symbol_id) → Symbol
+        # Symbol → generation_id → IndexGeneration
+        # Symbol → file_id → FileRecord
+        # Chunk → generation_id → IndexGeneration
+        # FileRecord → repository_id → Repository
+        # RetrievalEvent → repository_id → Repository (nullable FK)
+        # Memory → repository_id → Repository (nullable FK)
+        # TaskCheckpoint → repository_id → Repository (nullable FK)
 
+        # Get all generation IDs for this repository
+        gen_ids = [
+            str(g)
+            for g in (
+                await session.scalars(
+                    select(IndexGeneration.id)
+                    .where(IndexGeneration.repository_id == repo_id)
+                )
+            ).all()
+        ]
+
+        # Get all file IDs for this repository (needed for Symbol FK)
+        file_ids = [
+            str(f)
+            for f in (
+                await session.scalars(
+                    select(FileRecord.id)
+                    .where(FileRecord.repository_id == repo_id)
+                )
+            ).all()
+        ]
+
+        # 1. Delete symbol edges (depends on Symbol ids)
+        if gen_ids:
+            await session.execute(
+                delete(SymbolEdge).where(
+                    SymbolEdge.generation_id.in_(gen_ids)
+                )
+            )
+
+        # 2. Delete symbols (generation_id → IndexGeneration, file_id → FileRecord)
+        if file_ids:
+            await session.execute(
+                delete(Symbol).where(Symbol.file_id.in_(file_ids))
+            )
+
+        # 3. Delete chunks
         if gen_ids:
             await session.execute(
                 delete(Chunk).where(Chunk.generation_id.in_(gen_ids))
             )
 
+        # 4. Delete index generations
         await session.execute(delete(IndexGeneration).where(
             IndexGeneration.repository_id == repo_id
         ))
+
+        # 5. Delete file records
         await session.execute(delete(FileRecord).where(
             FileRecord.repository_id == repo_id
         ))
+
+        # 6. Delete index jobs
         await session.execute(delete(IndexJob).where(
             IndexJob.repository_id == repo_id
         ))
+
+        # 7. Delete repository-scoped retrieval events
+        await session.execute(delete(RetrievalEvent).where(
+            RetrievalEvent.repository_id == repo_id
+        ))
+
+        # 8. Delete repository-scoped memories
+        await session.execute(delete(Memory).where(
+            Memory.repository_id == repo_id
+        ))
+
+        # 9. Delete repository-scoped checkpoints
+        await session.execute(delete(TaskCheckpoint).where(
+            TaskCheckpoint.repository_id == repo_id
+        ))
+
+        # 10. Delete the repository
         await session.execute(delete(Repository).where(
             Repository.id == repo_id
         ))

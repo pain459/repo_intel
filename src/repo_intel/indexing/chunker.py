@@ -396,10 +396,25 @@ def _chunk_doc(content: str) -> list[Chunk]:
     # Find heading lines: Markdown (#) or reST (==== or ---- underlines)
     heading_re = re.compile(r"^#{1,6}\s+")
     regions: list[tuple[int, int]] = []
-    starts: list[int] = [0]
+    starts: list[int] = []
     for i, line in enumerate(lines):
         if heading_re.match(line):
             starts.append(i)
+    # If no headings found, return single chunk
+    if not starts:
+        return [
+            Chunk(
+                start_line=1,
+                end_line=len(lines),
+                chunk_type="doc",
+                symbol_name=None,
+                content=content,
+                estimated_tokens=max(len(content) // CHARS_PER_TOKEN, 1),
+            )
+        ]
+    # If the file starts with a heading, use first heading as region start
+    if starts[0] > 0:
+        regions.append((0, starts[0] - 1))
     for j, s in enumerate(starts):
         e = starts[j + 1] - 1 if j + 1 < len(starts) else len(lines) - 1
         regions.append((s, e))

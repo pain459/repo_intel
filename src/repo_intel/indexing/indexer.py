@@ -189,6 +189,7 @@ async def scan_repository(
                 session.add(file_rec)
                 await session.flush()
                 file_id = file_rec.id
+            file_ids[df.relative_path] = file_id
 
             # Upsert chunks (embedding set later in batch)
             for chunk in chunks:
