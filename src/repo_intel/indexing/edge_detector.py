@@ -58,7 +58,9 @@ _BUILTINS = frozenset({
 _RE_DEF = re.compile(r"^(?:async\s+)?def\s+(\w+)")
 _RE_CLASS_DEF = re.compile(r"^class\s+(\w+)")
 _RE_TS_FUNC = re.compile(r"(?:export\s+)?(?:async\s+)?function\s+(\w+)")
-_RE_TS_METHOD = re.compile(r"(?:async\s+)?(\w+)\s*\([^)]*\)\s*[:{]")
+_RE_TS_METHOD = re.compile(
+    r"(?:(?:async|static)\s+)*(\w+)\s*\([^)]*\)\s*[:{]",
+)
 
 
 def detect_edges(
@@ -115,11 +117,18 @@ def detect_edges(
         if m:
             to_sym = m.group(1).split(".")[-1]
             from_sym = m.group(2).split(".")[-1]
-            if to_sym in defined_symbols and from_sym in defined_symbols:
+            # Cross-file: edge if either the module OR the imported name
+            # is a known symbol (module path may not match a symbol name)
+            if to_sym in defined_symbols or from_sym in defined_symbols:
                 enclosing = scope[-1] if scope else from_sym
+                # If the imported name is a known symbol, point edge to it
+                if from_sym in defined_symbols:
+                    target = from_sym
+                else:
+                    target = to_sym
                 edges.append(SymbolEdgeRaw(
                     from_name=enclosing,
-                    to_name=to_sym,
+                    to_name=target,
                     relation_type="imports",
                     line=line_num,
                 ))
@@ -129,11 +138,12 @@ def detect_edges(
         if m:
             to_sym = m.group(1).split(".")[-1]
             from_sym = m.group(2)
-            if to_sym in defined_symbols and from_sym in defined_symbols:
+            if to_sym in defined_symbols or from_sym in defined_symbols:
                 enclosing = scope[-1] if scope else from_sym
+                target = from_sym if from_sym in defined_symbols else to_sym
                 edges.append(SymbolEdgeRaw(
                     from_name=enclosing,
-                    to_name=to_sym,
+                    to_name=target,
                     relation_type="imports",
                     line=line_num,
                 ))

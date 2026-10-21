@@ -46,8 +46,20 @@ _JS_ARROW = re.compile(
     r"(?:^|[\s;(])(?:export\s+)?(?:const|let|var)\s+(\w+)"
     r"\s*=\s*(?:async\s+)?(?:function|\()",
 )
-_JS_CLASS = re.compile(r"(?:^|[\s;])class\s+(\w+)")
-_JS_METHOD = re.compile(r"^(\s+)(\w+)\s*\(.*\)\s*\{")
+# Match "class Name" with optional export/default/abstract prefixes and
+# optional leading indentation.
+_JS_CLASS = re.compile(
+    r"^(?:\s*)(?:export\s+(?:default\s+)?class|abstract\s+class|class)\s+(\w+)",
+)
+_JS_METHOD = re.compile(
+    r"^(\s+)(?:async\s+)?(?:static\s+)?"
+    r"(?:\s*(?:public|private|protected|readonly|abstract)\s+)?"
+    r"(\w+)\s*\([^)]*\)\s*(?::[^{]*)?\{",
+)
+# TypeScript interface (only relevant for TS files)
+_TS_INTERFACE = re.compile(
+    r"^(?:\s*)(?:export\s+)?interface\s+(\w+)",
+)
 
 # Rust
 _RUST_FN = re.compile(r"^(\s*)fn\s+(\w+)\s*[<(]")
@@ -98,7 +110,7 @@ class Chunk:
 _LANG_PATTERNS: dict[str, tuple] = {
     "python": (_PYTHON_FUNC, _PYTHON_CLASS, _PYTHON_VAR),
     "javascript": (_JS_FUNC, _JS_ARROW, _JS_CLASS, _JS_METHOD),
-    "typescript": (_JS_FUNC, _JS_ARROW, _JS_CLASS, _JS_METHOD),
+    "typescript": (_JS_FUNC, _JS_ARROW, _JS_CLASS, _JS_METHOD, _TS_INTERFACE),
     "rust": (_RUST_FN, _RUST_STRUCT, _RUST_IMPL),
     "go": (_GO_FUNC, _GO_TYPE),
     "java": (_JAVA_METHOD, _JAVA_CLASS),
@@ -191,9 +203,14 @@ def _find_boundaries(lines: list[str], language: str) -> list[tuple[int, int, st
             if name in _CONTROL_FLOW:
                 break
             pat_lower = pattern.pattern.lower()
-            if (
+            # Determine kind from the pattern identity.
+            # The pattern string itself may not contain keywords like "method",
+            # so we check against known pattern objects directly.
+            if pattern is _JS_METHOD or pattern is _JAVA_METHOD:
+                kind = "function"
+            elif (
                 "func" in pat_lower or "fn" in pat_lower
-                or "arrow" in pat_lower or "method" in pat_lower
+                or "arrow" in pat_lower
                 or "def\\s" in pat_lower
             ):
                 kind = "function"
